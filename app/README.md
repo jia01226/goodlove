@@ -15,9 +15,12 @@
 5. 等一两分钟，页面会给出网址，访问：
    `https://jia01226.github.io/-1/app/`
 
-### 2. 填密钥
-- 去 [console.anthropic.com](https://console.anthropic.com) 注册、充一点点钱、生成一个 **API key**
-- 打开小窝 → 「设置」→ 粘贴密钥 → 保存
+### 2. 填密钥（支持 OpenRouter 或 Anthropic 官方）
+小窝「设置」里有「通道」开关，两家都能用：
+- **OpenRouter（推荐，一个钥匙买 Claude）**：去 [openrouter.ai/keys](https://openrouter.ai/keys) 注册充值、生成 key（`sk-or-...`）。模型名要写全（如 `anthropic/claude-sonnet-4.5`），完整列表见 [openrouter.ai/models](https://openrouter.ai/models?q=claude)。
+- **Anthropic 官方**：去 [console.anthropic.com](https://console.anthropic.com) 生成 key（`sk-ant-...`），模型用 `claude-sonnet-4-6` 等。
+
+打开小窝 → 「设置」→ 选通道 → 粘贴密钥 → 选模型 → 保存。
 
 ### 3. 添加到主屏幕（像 app）
 - iPhone：Safari 打开网址 → 分享 → 「添加到主屏幕」

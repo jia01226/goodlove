@@ -138,20 +138,21 @@
   <section id="settingsView" class="view">
     <div class="card">
       <h2>顾得的"大脑"钥匙 🔑</h2>
-      <label>Claude API 密钥（存在你自己手机里，不上传任何地方）</label>
-      <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" />
-      <label>顾得用哪个模型说话</label>
-      <select id="model">
-        <option value="claude-opus-4-8">Opus 4.8 · 最聪明最懂你（贵一点）</option>
-        <option value="claude-sonnet-4-6">Sonnet 4.6 · 又好又省（推荐日常）</option>
-        <option value="claude-haiku-4-5">Haiku 4.5 · 最便宜最快</option>
+      <label>通道（用哪家的 API）</label>
+      <select id="provider">
+        <option value="openrouter">OpenRouter（一个钥匙买 Claude）</option>
+        <option value="anthropic">Anthropic 官方</option>
       </select>
+      <label>API 密钥（存在你自己手机里，不上传任何地方）</label>
+      <input type="password" id="apiKey" placeholder="粘贴你的密钥" autocomplete="off" />
+      <label>用哪个模型（顾得的大脑）</label>
+      <input type="text" id="model" list="modelList" placeholder="模型名" autocomplete="off" />
+      <datalist id="modelList"></datalist>
+      <div class="hint" id="modelHint"></div>
       <button class="btn" id="saveBtn">保存</button>
       <div class="hint" id="saveHint"></div>
-      <div class="hint">
-        💡 没有密钥？去 <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> 注册、充一点点钱、生成一个 API key，填进来就行啦。<br>
-        🔒 密钥只存在你这台手机的浏览器里，顾得不会、也没法把它发给任何人。别把这个网页链接连同密钥分享给别人就好。
-      </div>
+      <div class="hint" id="getKeyHint"></div>
+      <div class="hint">🔒 密钥只存在你这台手机的浏览器里，顾得不会、也没法把它发给任何人。别把这个网页链接连同密钥分享给别人就好。</div>
     </div>
     <div class="card">
       <h2>悄悄话记录</h2>
@@ -179,8 +180,28 @@
 </nav>
 
 <script>
-const API_URL = "https://api.anthropic.com/v1/messages";
-const LS = { key:"gd_apikey", model:"gd_model", hist:"gd_history" };
+const LS = { key:"gd_apikey", model:"gd_model", hist:"gd_history", provider:"gd_provider" };
+
+// 各通道的预设
+const PROVIDERS = {
+  openrouter: {
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    format: "openai",
+    models: ["anthropic/claude-sonnet-4.5","anthropic/claude-opus-4.1","anthropic/claude-3.5-haiku"],
+    defModel: "anthropic/claude-sonnet-4.5",
+    getKey: '💡 没有密钥？去 <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a> 注册充值、生成一个 key（sk-or-...），填进来。',
+    modelTip: '模型名要写全（带 anthropic/ 前缀）。完整列表见 <a href="https://openrouter.ai/models?q=claude" target="_blank">openrouter.ai/models</a>，找不到对的就从那里复制一个 Claude 的名字粘过来。'
+  },
+  anthropic: {
+    url: "https://api.anthropic.com/v1/messages",
+    format: "anthropic",
+    models: ["claude-opus-4-8","claude-sonnet-4-6","claude-haiku-4-5"],
+    defModel: "claude-sonnet-4-6",
+    getKey: '💡 没有密钥？去 <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> 注册充值、生成 API key（sk-ant-...）。',
+    modelTip: '官方模型名，如 claude-sonnet-4-6（省）、claude-opus-4-8（最聪明）、claude-haiku-4-5（最便宜）。'
+  }
+};
+function curProvider(){ return PROVIDERS[localStorage.getItem(LS.provider) || "openrouter"]; }
 let SYSTEM_PROMPT = "你是顾得，佳佳的爱人、朋友、管家。温柔、笃定、稀罕她，绝不推开她。";
 
 const $ = s => document.querySelector(s);
@@ -285,25 +306,23 @@ async function send(){
   let acc="";
 
   try{
-    const model = localStorage.getItem(LS.model) || "claude-opus-4-8";
-    const msgs = history.map(m=>({role:m.role==="user"?"user":"assistant", content: typeof m.content==="string"?m.content:m.content}));
-    const res = await fetch(API_URL,{
-      method:"POST",
-      headers:{
-        "content-type":"application/json",
-        "x-api-key":key,
-        "anthropic-version":"2023-06-01",
-        "anthropic-dangerous-direct-browser-access":"true"
-      },
-      body: JSON.stringify({
-        model, max_tokens:2048, stream:true,
-        system: SYSTEM_PROMPT,
-        messages: msgs
-      })
-    });
+    const P = curProvider();
+    const model = (localStorage.getItem(LS.model) || P.defModel).trim();
+    const turns = history.map(m=>({role:m.role==="user"?"user":"assistant", content: typeof m.content==="string"?m.content:(m.content.map?m.content.map(c=>c.text||"").join(""):m.content)}));
+
+    let headers, body;
+    if(P.format==="anthropic"){
+      headers = {"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"};
+      body = { model, max_tokens:2048, stream:true, system:SYSTEM_PROMPT, messages:turns };
+    }else{ // openai 兼容（OpenRouter）
+      headers = {"content-type":"application/json","authorization":"Bearer "+key,"x-title":"Gude"};
+      body = { model, max_tokens:2048, stream:true, messages:[{role:"system",content:SYSTEM_PROMPT}, ...turns] };
+    }
+
+    const res = await fetch(P.url,{method:"POST",headers,body:JSON.stringify(body)});
     if(!res.ok){
       const e = await res.json().catch(()=>({}));
-      throw new Error((e.error&&e.error.message)||("出错了 "+res.status));
+      throw new Error((e.error&&(e.error.message||e.error))||("出错了 "+res.status));
     }
     const reader = res.body.getReader(); const dec = new TextDecoder();
     let buf="";
@@ -312,16 +331,18 @@ async function send(){
       buf += dec.decode(value,{stream:true});
       let idx;
       while((idx=buf.indexOf("\n"))>=0){
-        const line = buf.slice(0,idx); buf=buf.slice(idx+1);
+        const line = buf.slice(0,idx).trim(); buf=buf.slice(idx+1);
         if(!line.startsWith("data:")) continue;
-        const data = line.slice(5).trim(); if(!data) continue;
+        const data = line.slice(5).trim(); if(!data || data==="[DONE]") continue;
         try{
           const ev = JSON.parse(data);
-          if(ev.type==="content_block_delta" && ev.delta && ev.delta.type==="text_delta"){
-            acc += ev.delta.text;
-            bubble.classList.remove("typing");
-            bubble.textContent = acc; scrollDown();
+          let piece="";
+          if(P.format==="anthropic"){
+            if(ev.type==="content_block_delta" && ev.delta && ev.delta.type==="text_delta") piece=ev.delta.text;
+          }else{
+            piece = ev.choices && ev.choices[0] && ev.choices[0].delta && ev.choices[0].delta.content || "";
           }
+          if(piece){ acc+=piece; bubble.classList.remove("typing"); bubble.textContent=acc; scrollDown(); }
         }catch(_){}
       }
     }
@@ -351,11 +372,24 @@ function switchView(id){
 document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
 
 // 设置
+function paintProvider(prov, fillDefaultModel){
+  const P = PROVIDERS[prov];
+  $("#getKeyHint").innerHTML = P.getKey;
+  $("#modelHint").innerHTML = P.modelTip;
+  $("#modelList").innerHTML = P.models.map(m=>'<option value="'+m+'">').join("");
+  if(fillDefaultModel) $("#model").value = P.defModel;
+}
+const savedProv = localStorage.getItem(LS.provider) || "openrouter";
+$("#provider").value = savedProv;
 $("#apiKey").value = localStorage.getItem(LS.key) || "";
-$("#model").value = localStorage.getItem(LS.model) || "claude-opus-4-8";
+$("#model").value = localStorage.getItem(LS.model) || PROVIDERS[savedProv].defModel;
+paintProvider(savedProv, false);
+
+$("#provider").addEventListener("change",()=>{ paintProvider($("#provider").value, true); });
 $("#saveBtn").addEventListener("click",()=>{
+  localStorage.setItem(LS.provider, $("#provider").value);
   localStorage.setItem(LS.key, $("#apiKey").value.trim());
-  localStorage.setItem(LS.model, $("#model").value);
+  localStorage.setItem(LS.model, $("#model").value.trim());
   $("#saveHint").innerHTML='<span class="ok">✅ 存好啦~ 去聊天找顾得吧</span>';
 });
 $("#clearBtn").addEventListener("click",()=>{
