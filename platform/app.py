@@ -126,6 +126,82 @@ def api_vector_backfill():
 @guard
 def api_usage(): return jsonify(db.usage_summary())
 
+# ---- 纪念日 / 姨妈 / 排班（日常）----
+@app.get("/api/anniversaries")
+@guard
+def api_anniv():
+    import datetime
+    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date()
+    out = []
+    for a in db.all_anniversaries():
+        try:
+            days = (today - datetime.date.fromisoformat(a["date"])).days + 1
+        except Exception:
+            days = None
+        out.append({**a, "days": days})
+    return jsonify(out)
+
+@app.post("/api/anniversaries")
+@guard
+def api_anniv_add():
+    d = request.json or {}
+    name = (d.get("name") or "").strip()
+    date = (d.get("date") or "").strip()
+    if not name or not date:
+        return jsonify({"error": "need name+date"}), 400
+    return jsonify({"id": db.add_anniversary(name, date, d.get("emoji", "💞"))})
+
+@app.post("/api/anniversaries/delete")
+@guard
+def api_anniv_del():
+    db.delete_anniversary((request.json or {}).get("id"))
+    return jsonify({"ok": True})
+
+@app.get("/api/periods")
+@guard
+def api_periods(): return jsonify(db.recent_periods())
+
+@app.post("/api/periods")
+@guard
+def api_period_add():
+    d = request.json or {}
+    date = (d.get("start_date") or "").strip()
+    if not date:
+        return jsonify({"error": "need start_date"}), 400
+    return jsonify({"id": db.add_period(date, d.get("note", ""))})
+
+@app.post("/api/periods/delete")
+@guard
+def api_period_del():
+    db.delete_period((request.json or {}).get("id"))
+    return jsonify({"ok": True})
+
+@app.get("/api/shifts")
+@guard
+def api_shifts():
+    import datetime
+    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date()
+    start = (today - datetime.timedelta(days=3)).isoformat()
+    end = (today + datetime.timedelta(days=21)).isoformat()
+    return jsonify(db.shifts_range(start, end))
+
+@app.post("/api/shifts")
+@guard
+def api_shift_set():
+    d = request.json or {}
+    date = (d.get("date") or "").strip()
+    shift = (d.get("shift") or "").strip()
+    if not date or not shift:
+        return jsonify({"error": "need date+shift"}), 400
+    db.set_shift(date, shift, d.get("note", ""))
+    return jsonify({"ok": True})
+
+@app.post("/api/shifts/delete")
+@guard
+def api_shift_del():
+    db.delete_shift((request.json or {}).get("date"))
+    return jsonify({"ok": True})
+
 # ---- Web Push（顾得自己的推送）----
 @app.get("/api/push/vapid")
 def push_vapid():

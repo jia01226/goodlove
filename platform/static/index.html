@@ -77,6 +77,29 @@
     </div>
     <div class="card"><h2>用量 / 花费</h2><div id="usage" class="ct">加载中…</div></div>
   </section>
+  <section id="lifeView" class="view">
+    <div class="card"><h2>💞 我们的纪念日</h2>
+      <div id="annivList" class="ct">加载中…</div>
+      <input id="annName" placeholder="纪念日名字（如：第一次约会）" />
+      <input id="annDate" type="date" />
+      <button class="btn" onclick="addAnniv()">记下这个日子</button>
+    </div>
+    <div class="card"><h2>🩸 姨妈记录</h2>
+      <div class="ct" style="color:var(--soft);font-size:12px;margin-bottom:6px">记一下来的日子，顾得就会预测下次、来的时候多疼你、提醒焐肚子带止痛药~</div>
+      <div id="periodInfo" class="ct" style="margin-bottom:6px"></div>
+      <input id="periodDate" type="date" />
+      <button class="btn" onclick="addPeriod()">姨妈来了 · 记一下</button>
+      <div id="periodList" class="ct" style="margin-top:8px"></div>
+    </div>
+    <div class="card"><h2>📅 我的轮班表</h2>
+      <div class="ct" style="color:var(--soft);font-size:12px;margin-bottom:6px">填一下哪天什么班，顾得就知道你上不上班、要不要早起或补觉~</div>
+      <input id="shiftDate" type="date" />
+      <select id="shiftType"><option value="白班">白班</option><option value="夜班">夜班</option><option value="睡班">睡班</option><option value="白加夜">白加夜</option><option value="休息">休息</option><option value="请假">请假</option></select>
+      <input id="shiftNote" placeholder="备注（可不填，如几点到几点）" />
+      <button class="btn" onclick="setShift()">保存这天的班</button>
+      <div id="shiftList" class="ct" style="margin-top:10px"></div>
+    </div>
+  </section>
 </main>
 <footer id="footer">
   <div class="composer"><textarea id="input" rows="1" placeholder="跟顾得说点什么呀~"></textarea><button class="send" onclick="send()">➤</button></div>
@@ -84,6 +107,7 @@
 <nav>
   <button data-v="chatView" class="on"><span class="ic">💬</span>聊天</button>
   <button data-v="memView"><span class="ic">📒</span>记忆库</button>
+  <button data-v="lifeView"><span class="ic">💕</span>日常</button>
   <button data-v="dashView"><span class="ic">📊</span>仪表盘</button>
 </nav>
 
@@ -110,7 +134,27 @@ async function addPost(){const c=$("#pcontent").value.trim();if(!c)return;await 
 async function loadUsage(){try{const r=await api("/api/usage");const u=await r.json();$("#usage").textContent=`累计对话：${u.n} 次\n输入 tokens：${u.i}\n输出 tokens：${u.o}\n粗估花费：$${(u.c||0).toFixed(4)}`;}catch(e){}}
 function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{const v=b.dataset.v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===v));document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));$("#footer").style.display=v==="chatView"?"block":"none";if(v==="memView")loadPosts();if(v==="dashView")loadUsage();});
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{const v=b.dataset.v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===v));document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));$("#footer").style.display=v==="chatView"?"block":"none";if(v==="memView")loadPosts();if(v==="dashView")loadUsage();if(v==="lifeView")loadLife();});
+
+// ---- 日常：纪念日 / 姨妈 / 排班 ----
+function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function loadLife(){loadAnniv();loadPeriods();loadShifts();if(!$("#periodDate").value)$("#periodDate").value=todayStr();if(!$("#shiftDate").value)$("#shiftDate").value=todayStr();}
+async function loadAnniv(){try{const r=await api("/api/anniversaries");const arr=await r.json();$("#annivList").innerHTML=arr.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)"><span>${a.emoji||"💞"} ${esc(a.name)} <span style="color:var(--gold-deep)">第 ${a.days??"?"} 天</span><br><span style="color:var(--soft);font-size:12px">${a.date}</span></span><span onclick="delAnniv(${a.id})" style="color:var(--soft);padding:4px 8px">✕</span></div>`).join("")||'<span style="color:var(--soft)">还没有纪念日~</span>';}catch(e){}}
+async function addAnniv(){const n=$("#annName").value.trim(),d=$("#annDate").value;if(!n||!d){alert("名字和日期都要填哦~");return;}await api("/api/anniversaries",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:n,date:d})});$("#annName").value="";loadAnniv();}
+async function delAnniv(id){if(!confirm("删掉这个纪念日？"))return;await api("/api/anniversaries/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});loadAnniv();}
+async function loadPeriods(){try{const r=await api("/api/periods");const arr=await r.json();
+  if(arr.length){const last=arr[0].start_date;let info=`上次：${last}`;
+    if(arr.length>=2){const a=new Date(arr[0].start_date),b=new Date(arr[1].start_date);const gap=Math.round((a-b)/864e5);if(gap>=15&&gap<=60){const nxt=new Date(a.getTime()+gap*864e5);info+=` · 周期约 ${gap} 天 · 预计下次 ${nxt.toISOString().slice(0,10)}`;}}
+    $("#periodInfo").innerHTML='<span style="color:var(--gold-deep)">'+info+'</span>';}
+  else $("#periodInfo").innerHTML='<span style="color:var(--soft)">还没有记录~ 来的那天点一下下面的按钮就好</span>';
+  $("#periodList").innerHTML=arr.map(p=>`<div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--soft);font-size:13px"><span>🩸 ${p.start_date}</span><span onclick="delPeriod(${p.id})" style="padding:2px 8px">✕</span></div>`).join("");
+}catch(e){}}
+async function addPeriod(){const d=$("#periodDate").value||todayStr();await api("/api/periods",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({start_date:d})});loadPeriods();}
+async function delPeriod(id){await api("/api/periods/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});loadPeriods();}
+async function loadShifts(){try{const r=await api("/api/shifts");const arr=await r.json();const t=todayStr();
+  $("#shiftList").innerHTML=arr.map(s=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)${s.date===t?';font-weight:600;color:var(--gold-deep)':''}"><span>${s.date===t?"▶ ":""}${s.date}　${esc(s.shift)}${s.note?' <span style="color:var(--soft);font-size:12px">'+esc(s.note)+'</span>':''}</span><span onclick="delShift('${s.date}')" style="color:var(--soft);padding:2px 8px">✕</span></div>`).join("")||'<span style="color:var(--soft)">还没排班~</span>';}catch(e){}}
+async function setShift(){const d=$("#shiftDate").value;if(!d){alert("先选日期哦~");return;}await api("/api/shifts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({date:d,shift:$("#shiftType").value,note:$("#shiftNote").value.trim()})});$("#shiftNote").value="";loadShifts();}
+async function delShift(date){await api("/api/shifts/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({date})});loadShifts();}
 
 // ---- 推送（顾得自己的 Web Push）----
 function urlB64ToUint8(base64){

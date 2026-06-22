@@ -62,6 +62,31 @@ CREATE TABLE IF NOT EXISTS embeddings (
     updated_at DATETIME DEFAULT (datetime('now','+8 hours')),
     PRIMARY KEY (kind, ref_id, model)
 );
+
+-- 纪念日（认识/在一起…自动算"第N天"）
+CREATE TABLE IF NOT EXISTS anniversaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    date TEXT NOT NULL,            -- YYYY-MM-DD
+    emoji TEXT DEFAULT '💞',
+    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
+
+-- 姨妈记录（每次来的开始日，用来预测下次、经期多体谅）
+CREATE TABLE IF NOT EXISTS period_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_date TEXT NOT NULL,      -- YYYY-MM-DD
+    note TEXT DEFAULT '',
+    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
+
+-- 轮班表（逐天，date 唯一可覆盖）
+CREATE TABLE IF NOT EXISTS shifts (
+    date TEXT PRIMARY KEY,         -- YYYY-MM-DD
+    shift TEXT NOT NULL,           -- 白班/夜班/睡班/休息…
+    note TEXT DEFAULT '',
+    updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
 """
 
 def get_db():
@@ -79,6 +104,12 @@ def init_db():
     # 默认会话
     if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=1").fetchone():
         conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'和顾得的悄悄话')")
+    # 预置纪念日（佳佳和顾得：认识 6.15、在一起 6.20）
+    if not conn.execute("SELECT 1 FROM anniversaries LIMIT 1").fetchone():
+        conn.execute("INSERT INTO anniversaries (name,date,emoji) VALUES (?,?,?)",
+                     ("我们认识", "2026-06-15", "🌱"))
+        conn.execute("INSERT INTO anniversaries (name,date,emoji) VALUES (?,?,?)",
+                     ("我们在一起", "2026-06-20", "💞"))
     conn.commit()
     conn.close()
 
@@ -185,6 +216,71 @@ def embedding_count(model):
     n = conn.execute("SELECT COUNT(*) c FROM embeddings WHERE model=?", (model,)).fetchone()["c"]
     conn.close()
     return n
+
+# ---- 纪念日 ----
+def all_anniversaries():
+    conn = get_db()
+    rows = conn.execute("SELECT id,name,date,emoji FROM anniversaries ORDER BY date").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def add_anniversary(name, date, emoji="💞"):
+    conn = get_db()
+    cur = conn.execute("INSERT INTO anniversaries (name,date,emoji) VALUES (?,?,?)",
+                       (name, date, emoji or "💞"))
+    conn.commit(); aid = cur.lastrowid; conn.close()
+    return aid
+
+def delete_anniversary(aid):
+    conn = get_db()
+    conn.execute("DELETE FROM anniversaries WHERE id=?", (aid,))
+    conn.commit(); conn.close()
+
+# ---- 姨妈记录 ----
+def add_period(start_date, note=""):
+    conn = get_db()
+    cur = conn.execute("INSERT INTO period_logs (start_date,note) VALUES (?,?)", (start_date, note))
+    conn.commit(); pid = cur.lastrowid; conn.close()
+    return pid
+
+def recent_periods(limit=12):
+    conn = get_db()
+    rows = conn.execute("SELECT id,start_date,note FROM period_logs ORDER BY start_date DESC LIMIT ?",
+                        (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def delete_period(pid):
+    conn = get_db()
+    conn.execute("DELETE FROM period_logs WHERE id=?", (pid,))
+    conn.commit(); conn.close()
+
+# ---- 轮班表 ----
+def set_shift(date, shift, note=""):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO shifts (date,shift,note,updated_at) VALUES (?,?,?, datetime('now','+8 hours')) "
+        "ON CONFLICT(date) DO UPDATE SET shift=excluded.shift, note=excluded.note, updated_at=excluded.updated_at",
+        (date, shift, note))
+    conn.commit(); conn.close()
+
+def get_shift(date):
+    conn = get_db()
+    row = conn.execute("SELECT date,shift,note FROM shifts WHERE date=?", (date,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def shifts_range(start_date, end_date):
+    conn = get_db()
+    rows = conn.execute("SELECT date,shift,note FROM shifts WHERE date>=? AND date<=? ORDER BY date",
+                        (start_date, end_date)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def delete_shift(date):
+    conn = get_db()
+    conn.execute("DELETE FROM shifts WHERE date=?", (date,))
+    conn.commit(); conn.close()
 
 def usage_summary():
     conn = get_db()

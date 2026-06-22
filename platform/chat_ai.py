@@ -42,10 +42,18 @@ def _render(parts, items):
     for p in items:
         parts.append(f"[{p['type']}] {p['content']}")
 
+def _now_context():
+    try:
+        import context
+        return context.build_now_context()
+    except Exception as e:
+        print("[chat_ai] 实时情况生成失败：", e)
+        return ""
+
 def build_system_prompt(posts, query=None):
     """posts: 全部记忆（最新在前）。query: 本轮用户的话，用来"精准想起"。
     记忆少→全带；记忆多→带 最相关top-k + 永远要带的类型 + 最近几条（去重）。"""
-    parts = [BASE, _load_persona()]
+    parts = [BASE, _load_persona(), _now_context()]
     if not posts:
         return "\n".join(parts)
 
