@@ -52,6 +52,7 @@ def stream_chat(history, posts):
     usage = {}
     url = API_BASE + "/chat/completions"
     with requests.post(url, headers=headers, json=payload, stream=True, timeout=120) as r:
+        r.encoding = "utf-8"
         if r.status_code != 200:
             yield f"[顾得没接上线：{r.status_code} {r.text[:200]}]"
             return
