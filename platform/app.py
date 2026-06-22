@@ -47,6 +47,11 @@ def chat_page(): return send_from_directory(STATIC, "chat.html")
 @app.get("/static/<path:p>")
 def static_files(p): return send_from_directory(STATIC, p)
 
+@app.get("/sw.js")
+def sw_js():
+    # service worker 必须从根目录提供，作用域才能覆盖整个站点
+    return send_from_directory(STATIC, "sw.js", mimetype="application/javascript")
+
 # ---- 聊天（SSE）----
 @app.post("/api/chat")
 @guard

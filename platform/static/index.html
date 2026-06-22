@@ -126,7 +126,7 @@ async function enablePush(){
     if(perm!=="granted"){h.innerHTML="✗ 没拿到权限:"+perm+"(删图标重装、从图标打开、点允许)";return;}
     h.innerHTML="②权限OK,注册中…";
     if(!("serviceWorker" in navigator)||!("PushManager" in window)){h.innerHTML="✗ 不支持推送(需iOS16.4+且从图标打开)";return;}
-    const reg=await navigator.serviceWorker.register("/static/sw.js");
+    const reg=await navigator.serviceWorker.register("/sw.js");
     await navigator.serviceWorker.ready;
     h.innerHTML="③订阅中…";
     const kr=await api("/api/push/vapid");const {key}=await kr.json();
@@ -143,7 +143,7 @@ async function testPush(){
   }catch(e){h.innerHTML="测试出错:"+e.message;}
 }
 
-function boot(){loadMsgs(); if("serviceWorker" in navigator){navigator.serviceWorker.register("/static/sw.js").catch(()=>{});}}
+function boot(){loadMsgs(); if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{});}}
 boot();
 </script>
 </body>
