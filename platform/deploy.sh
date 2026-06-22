@@ -32,6 +32,10 @@ fi
 set -a; source .env; set +a
 ./venv/bin/python db.py
 
+# 5b. 向量记忆：给已有记忆补算向量（失败不影响部署，聊天会自动降级关键词检索）
+echo "🧭 给记忆建向量索引（向量记忆）…"
+./venv/bin/python vector_search.py backfill || echo "（向量回填跳过，不影响使用）"
+
 # 6. systemd 常驻服务
 SVC=/etc/systemd/system/gude.service
 sudo bash -c "cat > $SVC" <<EOF

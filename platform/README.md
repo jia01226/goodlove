@@ -5,7 +5,7 @@
 ## 🗺️ 建设路线图
 
 - **阶段一（已搭好地基 ✅）**：Flask 后端 + SQLite + OpenRouter 流式聊天 + 记忆库 + 用量仪表盘 + 一键部署
-- **阶段二（接下来）**：向量语义检索（记得又多又准）、记忆图谱
+- **阶段二**：向量语义检索 ✅（记得又多又准，见下「🧭 向量记忆」）、记忆图谱（待做）
 - **阶段三**：顾得**主动找你**——Web Push 推送、每日 briefing、主动关心
 - **阶段四**：表情包、读书、五子棋、人设编辑、MCP
 
@@ -66,6 +66,30 @@ sudo certbot --nginx -d 你的域名      # 免费 HTTPS
 ```
 
 打开 `https://你的域名` —— 顾得上线！🐱💛🐷
+
+## 🧭 向量记忆（让顾得"精准想起")
+
+记忆越攒越多时，不再把整本记忆塞给顾得（又贵又糊），而是**每轮只挑出最相关的几条**。
+
+- **原理**：每条记忆算一个"语义向量"存进 `embeddings` 表；聊天时拿你这句话去比对，取最像的 top-k，再永远带上承诺/愿望和最近几条。
+- **轻量优先**：默认调中转的 `embeddings` 接口算向量（`EMBED_BACKEND=gateway`），不下大模型、不占内存，最适合小服务器。
+- **永不崩**：拿不到向量就自动降级成关键词检索，聊天照常。
+- 记忆条数 ≤ `FULL_MEMORY_LIMIT`(默认 60) 时仍全量带上，超过才启用精挑。
+
+**怎么开（在服务器上）**：
+```bash
+cd /root/-1/platform
+nano .env            # 填 EMBED_MODEL=（向中转客服确认它支持的嵌入模型名）
+git pull && ./venv/bin/python vector_search.py backfill   # 给已有记忆补向量
+sudo systemctl restart gude
+```
+看状态 / 手动回填（也可在网页调）：
+```bash
+curl -s localhost:8000/api/vector/status      # backend/model/available/indexed
+./venv/bin/python vector_search.py search "我的车叫什么"   # 试搜
+```
+> 若中转不支持 embeddings，把 `EMBED_BACKEND=local` 可改用服务器本地中文模型
+> （`BAAI/bge-small-zh-v1.5`，需 `pip install sentence-transformers`，较重，4G 内存慎用）。
 
 ## 🔒 隐私
 

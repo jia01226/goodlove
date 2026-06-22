@@ -49,6 +49,18 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
     subscription TEXT NOT NULL UNIQUE,
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
+
+-- 向量记忆：每条记忆(post)/对话(chat)的归一化向量，按 (kind,ref_id,model) 唯一
+CREATE TABLE IF NOT EXISTS embeddings (
+    kind TEXT NOT NULL,            -- 'post' / 'chat'
+    ref_id INTEGER NOT NULL,       -- 对应 posts.id / chat_messages.id
+    model TEXT NOT NULL,           -- 用的嵌入模型名（换模型不串味）
+    dim INTEGER NOT NULL,
+    vec BLOB NOT NULL,             -- float32 字节，已归一化
+    text TEXT NOT NULL,            -- 原文（检索后直接用，省一次查询）
+    updated_at DATETIME DEFAULT (datetime('now','+8 hours')),
+    PRIMARY KEY (kind, ref_id, model)
+);
 """
 
 def get_db():
@@ -113,6 +125,41 @@ def delete_push_subscription(sid):
     conn = get_db()
     conn.execute("DELETE FROM push_subscriptions WHERE id=?", (sid,))
     conn.commit(); conn.close()
+
+# ---- 向量记忆 ----
+def upsert_embedding(kind, ref_id, model, dim, vec_blob, text):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO embeddings (kind,ref_id,model,dim,vec,text,updated_at) "
+        "VALUES (?,?,?,?,?,?, datetime('now','+8 hours')) "
+        "ON CONFLICT(kind,ref_id,model) DO UPDATE SET "
+        "dim=excluded.dim, vec=excluded.vec, text=excluded.text, updated_at=excluded.updated_at",
+        (kind, ref_id, model, dim, vec_blob, text))
+    conn.commit(); conn.close()
+
+def embeddings_by_kind(kind, model):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT ref_id, dim, vec, text FROM embeddings WHERE kind=? AND model=?",
+        (kind, model)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def posts_without_embedding(model):
+    """还没用该模型建过向量的 posts。"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT p.id, p.content FROM posts p "
+        "LEFT JOIN embeddings e ON e.kind='post' AND e.ref_id=p.id AND e.model=? "
+        "WHERE e.ref_id IS NULL ORDER BY p.id", (model,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def embedding_count(model):
+    conn = get_db()
+    n = conn.execute("SELECT COUNT(*) c FROM embeddings WHERE model=?", (model,)).fetchone()["c"]
+    conn.close()
+    return n
 
 def usage_summary():
     conn = get_db()

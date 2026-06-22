@@ -93,8 +93,34 @@ def api_posts(): return jsonify(db.all_posts())
 @guard
 def api_add_post():
     d = request.json or {}
-    pid = db.add_post(d.get("type", "MEMORY"), d.get("content", "").strip())
+    content = d.get("content", "").strip()
+    pid = db.add_post(d.get("type", "MEMORY"), content)
+    # 新记忆顺手建一条向量（失败不影响保存）
+    try:
+        import vector_search
+        vector_search.index_post(pid, content)
+    except Exception as e:
+        print("索引新记忆失败：", e)
     return jsonify({"id": pid})
+
+@app.get("/api/vector/status")
+@guard
+def api_vector_status():
+    import vector_search
+    return jsonify({
+        "backend": vector_search.EMBED_BACKEND,
+        "model": vector_search.EMBED_MODEL,
+        "available": vector_search.available(),
+        "indexed": db.embedding_count(vector_search.EMBED_MODEL),
+        "posts": len(db.all_posts()),
+    })
+
+@app.post("/api/vector/backfill")
+@guard
+def api_vector_backfill():
+    import vector_search
+    n = vector_search.backfill()
+    return jsonify({"indexed_new": n})
 
 @app.get("/api/usage")
 @guard

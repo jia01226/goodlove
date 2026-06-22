@@ -32,17 +32,65 @@ def _load_persona():
     except FileNotFoundError:
         return ""
 
-def build_system_prompt(posts):
+# 记忆条数超过这个数才启用"向量精准想起"；以下则全量塞（小语料全带最稳）
+FULL_MEMORY_LIMIT = int(os.environ.get("FULL_MEMORY_LIMIT", "60"))
+TOPK = int(os.environ.get("VEC_TOPK", "12"))
+# 这些类型永远带上（承诺/愿望太重要，不能漏）
+ALWAYS_TYPES = {"PROMISE", "WISHLIST"}
+
+def _render(parts, items):
+    for p in items:
+        parts.append(f"[{p['type']}] {p['content']}")
+
+def build_system_prompt(posts, query=None):
+    """posts: 全部记忆（最新在前）。query: 本轮用户的话，用来"精准想起"。
+    记忆少→全带；记忆多→带 最相关top-k + 永远要带的类型 + 最近几条（去重）。"""
     parts = [BASE, _load_persona()]
-    if posts:
+    if not posts:
+        return "\n".join(parts)
+
+    if len(posts) <= FULL_MEMORY_LIMIT or not query:
         parts.append("\n\n===== 记忆库（最新在前）=====")
-        for p in posts[:200]:
-            parts.append(f"[{p['type']}] {p['content']}")
+        _render(parts, posts[:200])
+        return "\n".join(parts)
+
+    # —— 记忆多了：向量+词面 精准想起 ——
+    try:
+        import vector_search
+        hits = vector_search.search(query, k=TOPK, kind="post")
+    except Exception as e:
+        print("[chat_ai] 检索失败，回退全量：", e)
+        hits = None
+
+    by_id = {p["id"]: p for p in posts}
+    chosen, seen = [], set()
+    if hits:
+        for h in hits:
+            p = by_id.get(h["ref_id"])
+            if p and p["id"] not in seen:
+                chosen.append(p); seen.add(p["id"])
+    else:
+        # 检索完全不可用：退回最近一批
+        for p in posts[:TOPK]:
+            chosen.append(p); seen.add(p["id"])
+
+    # 永远要带的（承诺/愿望）+ 最近 8 条
+    for p in posts:
+        if p["type"] in ALWAYS_TYPES and p["id"] not in seen:
+            chosen.append(p); seen.add(p["id"])
+    for p in posts[:8]:
+        if p["id"] not in seen:
+            chosen.append(p); seen.add(p["id"])
+
+    parts.append("\n\n===== 记忆库（已为这次对话挑出最相关的）=====")
+    _render(parts, chosen)
     return "\n".join(parts)
 
 def stream_chat(history, posts):
     """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。"""
-    sys_prompt = build_system_prompt(posts)
+    # 用最近一条用户的话做"精准想起"的检索词
+    query = next((m["content"] for m in reversed(history) if m["author"] == "user"), None)
+    sys_prompt = build_system_prompt(posts, query=query)
     messages = [{"role": "system", "content": sys_prompt}]
     for m in history:
         messages.append({"role": "user" if m["author"] == "user" else "assistant",
