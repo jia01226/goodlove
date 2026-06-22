@@ -179,11 +179,7 @@ def api_period_del():
 @app.get("/api/shifts")
 @guard
 def api_shifts():
-    import datetime
-    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date()
-    start = (today - datetime.timedelta(days=3)).isoformat()
-    end = (today + datetime.timedelta(days=21)).isoformat()
-    return jsonify(db.shifts_range(start, end))
+    return jsonify(db.all_shifts())
 
 @app.post("/api/shifts")
 @guard

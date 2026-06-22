@@ -277,6 +277,12 @@ def shifts_range(start_date, end_date):
     conn.close()
     return [dict(r) for r in rows]
 
+def all_shifts():
+    conn = get_db()
+    rows = conn.execute("SELECT date,shift,note FROM shifts ORDER BY date").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
 def delete_shift(date):
     conn = get_db()
     conn.execute("DELETE FROM shifts WHERE date=?", (date,))
