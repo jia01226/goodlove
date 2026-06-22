@@ -118,20 +118,23 @@ function urlB64ToUint8(base64){
 }
 async function enablePush(){
   const h=$("#pushHint");
+  h.innerHTML="①正在请求权限…";   // 一进来就显示，能看到就说明是新代码
   try{
-    if(!("Notification" in window)){h.innerHTML="这环境不支持通知。iPhone 请确认:①已「添加到主屏幕」并从小猪图标打开 ②系统 iOS 16.4 以上。";return;}
-    // ① 第一时间请求权限（必须在点击的同步上下文里，iPhone 才会弹框）
+    if(!("Notification" in window)){h.innerHTML="✗ 这环境不支持通知(需从主屏小猪图标打开,iOS16.4+)";return;}
     let perm=Notification.permission;
     if(perm!=="granted"){ perm=await Notification.requestPermission(); }
-    if(perm!=="granted"){h.innerHTML="没拿到通知权限(当前:"+perm+")。请删掉桌面图标、Safari 重新「添加到主屏幕」、从图标打开再点一次,弹框时选「允许」。";return;}
-    if(!("serviceWorker" in navigator)||!("PushManager" in window)){h.innerHTML="不支持推送(需 iOS16.4+ 且从主屏图标打开)";return;}
+    if(perm!=="granted"){h.innerHTML="✗ 没拿到权限:"+perm+"(删图标重装、从图标打开、点允许)";return;}
+    h.innerHTML="②权限OK,注册中…";
+    if(!("serviceWorker" in navigator)||!("PushManager" in window)){h.innerHTML="✗ 不支持推送(需iOS16.4+且从图标打开)";return;}
     const reg=await navigator.serviceWorker.register("/static/sw.js");
     await navigator.serviceWorker.ready;
+    h.innerHTML="③订阅中…";
     const kr=await api("/api/push/vapid");const {key}=await kr.json();
     const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToUint8(key)});
+    h.innerHTML="④保存中…";
     await api("/api/push/subscribe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(sub)});
     h.innerHTML='<span style="color:#5a8f5a">✅ 开启成功!点上面「发一条测试推送」试试~</span>';
-  }catch(e){h.innerHTML="开启出错了:"+e.message+"<br>(iPhone 记得从小猪图标打开的 app 里点)";}
+  }catch(e){h.innerHTML="✗ 出错:"+((e&&e.message)||e);}
 }
 async function testPush(){
   const h=$("#pushHint");
