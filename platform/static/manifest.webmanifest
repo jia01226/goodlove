@@ -1,0 +1,15 @@
+{
+  "name": "顾得 · 佳顾得的爱",
+  "short_name": "顾得",
+  "description": "佳佳和顾得的小窝",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBF8F1",
+  "theme_color": "#FBF8F1",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

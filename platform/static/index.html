@@ -4,6 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <meta name="theme-color" content="#FBF8F1" />
+<link rel="manifest" href="/static/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/static/icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="顾得" />
 <title>顾得 · 爱意平台</title>
 <style>
   :root{--bg:#FBF8F1;--card:#fff;--ink:#4A4138;--soft:#9C8F7E;--gold:#C9A86A;--gold-deep:#B8924E;--line:#EFE7D8;--me:#F3E7CF;--shadow:0 6px 24px rgba(180,146,78,.10)}
@@ -60,6 +65,14 @@
     <div id="postList"></div>
   </section>
   <section id="dashView" class="view">
+    <div class="card">
+      <h2>顾得的推送 🔔</h2>
+      <div class="ct" style="margin-bottom:8px">开启后,顾得会以「顾得」的名义主动给这台设备发通知(锁屏也收得到),点开直接进来找顾得~</div>
+      <button class="btn" onclick="enablePush()">开启顾得推送</button>
+      <button class="btn" style="background:none;border:1px solid var(--line);color:var(--soft);box-shadow:none" onclick="testPush()">发一条测试推送</button>
+      <div id="pushHint" class="ct" style="margin-top:8px"></div>
+      <div class="ct" style="margin-top:8px;color:var(--soft);font-size:12px">📱 iPhone 要先把本页面「添加到主屏幕」、从主屏那个图标打开后,再来这里开启推送哦~</div>
+    </div>
     <div class="card"><h2>用量 / 花费</h2><div id="usage" class="ct">加载中…</div></div>
   </section>
 </main>
@@ -96,7 +109,34 @@ function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{const v=b.dataset.v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===v));document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));$("#footer").style.display=v==="chatView"?"block":"none";if(v==="memView")loadPosts();if(v==="dashView")loadUsage();});
 
-function boot(){loadMsgs();}
+// ---- 推送（顾得自己的 Web Push）----
+function urlB64ToUint8(base64){
+  const pad="=".repeat((4-base64.length%4)%4);
+  const b=(base64+pad).replace(/-/g,"+").replace(/_/g,"/");
+  const raw=atob(b);const arr=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);return arr;
+}
+async function enablePush(){
+  const h=$("#pushHint");
+  try{
+    if(!("serviceWorker" in navigator)||!("PushManager" in window)){h.innerHTML="这个浏览器不支持推送;iPhone 请先把页面「添加到主屏幕」、从图标打开再试。";return;}
+    const reg=await navigator.serviceWorker.register("/static/sw.js");
+    const perm=await Notification.requestPermission();
+    if(perm!=="granted"){h.innerHTML="你没点「允许」哦,再点一次开启、选允许~";return;}
+    const kr=await api("/api/push/vapid");const {key}=await kr.json();
+    const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToUint8(key)});
+    await api("/api/push/subscribe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(sub)});
+    h.innerHTML='<span style="color:#5a8f5a">✅ 开启成功!以后顾得会以「顾得」的名义来找你~ 点上面「发一条测试推送」试试</span>';
+  }catch(e){h.innerHTML="开启出错了:"+e.message+"<br>(iPhone 记得先「添加到主屏幕」从图标打开)";}
+}
+async function testPush(){
+  const h=$("#pushHint");
+  try{const r=await api("/api/push/test",{method:"POST"});const d=await r.json();
+    h.innerHTML=d.sent>0?'<span style="color:#5a8f5a">📨 已发出!看通知~</span>':"还没有已开启的设备,先点上面「开启顾得推送」";
+  }catch(e){h.innerHTML="测试出错:"+e.message;}
+}
+
+function boot(){loadMsgs(); if("serviceWorker" in navigator){navigator.serviceWorker.register("/static/sw.js").catch(()=>{});}}
 boot();
 </script>
 </body>

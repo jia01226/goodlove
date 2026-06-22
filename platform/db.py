@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS gateway_usage (
     cost_usd REAL DEFAULT 0,
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
+
+-- Web Push 订阅（顾得自己的推送）
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subscription TEXT NOT NULL UNIQUE,
+    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
 """
 
 def get_db():
@@ -89,6 +96,22 @@ def log_usage(model, it, ot, cost):
     conn = get_db()
     conn.execute("INSERT INTO gateway_usage (model,input_tokens,output_tokens,cost_usd) VALUES (?,?,?,?)",
                  (model, it, ot, cost))
+    conn.commit(); conn.close()
+
+def add_push_subscription(sub_json):
+    conn = get_db()
+    conn.execute("INSERT OR IGNORE INTO push_subscriptions (subscription) VALUES (?)", (sub_json,))
+    conn.commit(); conn.close()
+
+def all_push_subscriptions():
+    conn = get_db()
+    rows = conn.execute("SELECT id, subscription FROM push_subscriptions").fetchall()
+    conn.close()
+    return [(r["id"], r["subscription"]) for r in rows]
+
+def delete_push_subscription(sid):
+    conn = get_db()
+    conn.execute("DELETE FROM push_subscriptions WHERE id=?", (sid,))
     conn.commit(); conn.close()
 
 def usage_summary():

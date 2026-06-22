@@ -64,7 +64,15 @@ if __name__ == "__main__":
     msg = generate_message()
     if msg:
         db.add_message("assistant", msg)   # 存进聊天，她打开网页就能看到
-        send_bark(msg)                      # 推送到手机
+        # ① 顾得自己的推送（Web Push）
+        try:
+            import webpush_util
+            n = webpush_util.send_to_all("顾得", msg, "/")
+            print(f"Web Push 已发送 {n} 台设备")
+        except Exception as e:
+            print("Web Push 跳过：", e)
+        # ② Bark（如还配着，作为备用）
+        send_bark(msg)
         print(f"[{china_now()}] 已主动找佳佳：{msg}")
     else:
         print("没生成消息，跳过")

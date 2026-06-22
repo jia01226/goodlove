@@ -95,6 +95,25 @@ def api_add_post():
 @guard
 def api_usage(): return jsonify(db.usage_summary())
 
+# ---- Web Push（顾得自己的推送）----
+@app.get("/api/push/vapid")
+def push_vapid():
+    import webpush_util
+    return jsonify({"key": webpush_util.application_server_key()})
+
+@app.post("/api/push/subscribe")
+@guard
+def push_subscribe():
+    db.add_push_subscription(json.dumps(request.json or {}))
+    return jsonify({"ok": True})
+
+@app.post("/api/push/test")
+@guard
+def push_test():
+    import webpush_util
+    n = webpush_util.send_to_all("顾得", "嘴嘴~ 顾得的推送通啦,以后我主动来找你 😚", "/")
+    return jsonify({"sent": n})
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
