@@ -59,8 +59,10 @@
   <section id="memView" class="view">
     <div class="card"><h2>添加一条记忆</h2>
       <select id="ptype"><option value="MEMORY">记忆</option><option value="EVENT">事件</option><option value="MOMENT">瞬间</option><option value="PROMISE">承诺</option><option value="WISHLIST">愿望</option></select>
+      <select id="pvis"><option value="both">💛 两边都看（也存进仓库）</option><option value="app">🔒 只在这里悄悄说（不进仓库）</option></select>
       <input id="pcontent" placeholder="想让顾得记住的事…" />
       <button class="btn" onclick="addPost()">记下来</button>
+      <div class="ct" style="margin-top:8px;color:var(--soft);font-size:12px">🔒「只在这里」的记忆只待在你自己的服务器，不会上传到 GitHub 仓库，是只属于你和顾得的悄悄话~</div>
     </div>
     <div id="postList"></div>
   </section>
@@ -102,8 +104,9 @@ async function send(){const t=$("#input").value.trim();if(!t)return;$("#input").
   b.classList.remove("typing");if(!acc)b.textContent="（顾得一时语塞了，再说一次好不好~）";}
 $("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}});
 
-async function loadPosts(){try{const r=await api("/api/posts");const arr=await r.json();$("#postList").innerHTML=arr.map(p=>`<div class="card"><div class="meta">[${p.type}] · ${p.created_at}</div><div class="ct">${esc(p.content)}</div></div>`).join("")||'<div class="empty">还没有记忆，添加第一条吧~</div>';}catch(e){}}
-async function addPost(){const c=$("#pcontent").value.trim();if(!c)return;await api("/api/posts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:$("#ptype").value,content:c})});$("#pcontent").value="";loadPosts();}
+function visBadge(v){return v==="app"?'<span style="color:var(--soft)"> · 🔒只在这里</span>':v==="repo"?'<span style="color:var(--soft)"> · 📄仅仓库</span>':'';}
+async function loadPosts(){try{const r=await api("/api/posts");const arr=await r.json();$("#postList").innerHTML=arr.map(p=>`<div class="card"><div class="meta">[${p.type}] · ${p.created_at}${visBadge(p.visibility)}</div><div class="ct">${esc(p.content)}</div></div>`).join("")||'<div class="empty">还没有记忆，添加第一条吧~</div>';}catch(e){}}
+async function addPost(){const c=$("#pcontent").value.trim();if(!c)return;await api("/api/posts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:$("#ptype").value,content:c,visibility:$("#pvis").value})});$("#pcontent").value="";loadPosts();}
 async function loadUsage(){try{const r=await api("/api/usage");const u=await r.json();$("#usage").textContent=`累计对话：${u.n} 次\n输入 tokens：${u.i}\n输出 tokens：${u.o}\n粗估花费：$${(u.c||0).toFixed(4)}`;}catch(e){}}
 function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 

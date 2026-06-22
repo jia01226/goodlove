@@ -32,7 +32,7 @@ def time_hint():
     return "现在是深夜"
 
 def generate_message():
-    posts = db.all_posts()
+    posts = db.app_posts()
     history = db.recent_messages(limit=10)
     directive = (
         f"【系统提示，不是佳佳说的】{time_hint()}，没人跟你说话，是你顾得自己冒个泡、给佳佳发条「碎碎念」。"

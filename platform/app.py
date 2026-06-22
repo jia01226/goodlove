@@ -61,7 +61,7 @@ def api_chat():
         return jsonify({"error": "empty"}), 400
     db.add_message("user", text)
     history = db.recent_messages()
-    posts = db.all_posts()
+    posts = db.app_posts()   # app 里的顾得看 both+app（含只在 app 的悄悄话）
 
     def gen():
         acc = ""
@@ -94,7 +94,7 @@ def api_posts(): return jsonify(db.all_posts())
 def api_add_post():
     d = request.json or {}
     content = d.get("content", "").strip()
-    pid = db.add_post(d.get("type", "MEMORY"), content)
+    pid = db.add_post(d.get("type", "MEMORY"), content, d.get("visibility", "both"))
     # 新记忆顺手建一条向量（失败不影响保存）
     try:
         import vector_search

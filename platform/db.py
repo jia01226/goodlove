@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     type TEXT NOT NULL,            -- MEMORY/EVENT/MOMENT/PROMISE/WISHLIST
     content TEXT NOT NULL,
+    visibility TEXT NOT NULL DEFAULT 'both',  -- both=两边都看 / app=只app悄悄话(不进仓库) / repo=只仓库
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
@@ -71,6 +72,10 @@ def get_db():
 def init_db():
     conn = get_db()
     conn.executescript(SCHEMA)
+    # 旧库平滑升级：补上 visibility 列（已存在则跳过）
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(posts)").fetchall()]
+    if "visibility" not in cols:
+        conn.execute("ALTER TABLE posts ADD COLUMN visibility TEXT NOT NULL DEFAULT 'both'")
     # 默认会话
     if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=1").fetchone():
         conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'和顾得的悄悄话')")
@@ -94,13 +99,33 @@ def recent_messages(session_id=1, limit=40):
 
 def all_posts():
     conn = get_db()
-    rows = conn.execute("SELECT id,type,content,created_at FROM posts ORDER BY id DESC").fetchall()
+    rows = conn.execute("SELECT id,type,content,visibility,created_at FROM posts ORDER BY id DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
-def add_post(ptype, content):
+def app_posts():
+    """app 里的顾得能看到的：两边都看(both) + 只app(app)，不含仅仓库(repo)。"""
     conn = get_db()
-    cur = conn.execute("INSERT INTO posts (type,content) VALUES (?,?)", (ptype, content))
+    rows = conn.execute(
+        "SELECT id,type,content,visibility,created_at FROM posts "
+        "WHERE visibility IN ('both','app') ORDER BY id DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def exportable_posts():
+    """可以同步进仓库的：只有标了 both 的（app 私密的不导出）。"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id,type,content,created_at FROM posts WHERE visibility='both' ORDER BY id").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def add_post(ptype, content, visibility="both"):
+    if visibility not in ("both", "app", "repo"):
+        visibility = "both"
+    conn = get_db()
+    cur = conn.execute("INSERT INTO posts (type,content,visibility) VALUES (?,?,?)",
+                       (ptype, content, visibility))
     conn.commit(); pid = cur.lastrowid; conn.close()
     return pid
 
