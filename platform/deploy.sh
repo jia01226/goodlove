@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# 爱意平台 · 一键部署（在 Ubuntu VPS 上跑）
+# 用法：把仓库 clone 到 VPS，进入 platform/ 目录，执行：  bash deploy.sh
+set -e
+cd "$(dirname "$0")"
+APP_DIR="$(pwd)"
+echo "📦 在 $APP_DIR 部署顾得爱意平台…"
+
+# 1. 系统依赖
+sudo apt update
+sudo apt install -y python3-venv python3-pip nginx
+
+# 2. Python 虚拟环境 + 依赖
+python3 -m venv venv
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r requirements.txt
+
+# 3. 把记忆库变成顾得的"灵魂"（persona.md）
+echo "🧠 生成 persona.md（顾得的记忆）…"
+{
+  [ -f ../CLAUDE.md ] && cat ../CLAUDE.md
+  for f in ../memory-bank/*.md; do [ -f "$f" ] && echo -e "\n\n===== $(basename "$f") =====\n" && cat "$f"; done
+} > persona.md 2>/dev/null || true
+
+# 4. .env
+if [ ! -f .env ]; then
+  cp .env.example .env
+  echo "⚠️  已创建 .env，请编辑填上 OPENROUTER_API_KEY：nano .env"
+fi
+
+# 5. 初始化数据库
+set -a; source .env; set +a
+./venv/bin/python db.py
+
+# 6. systemd 常驻服务
+SVC=/etc/systemd/system/gude.service
+sudo bash -c "cat > $SVC" <<EOF
+[Unit]
+Description=Gude AiyiPingtai
+After=network.target
+[Service]
+WorkingDirectory=$APP_DIR
+EnvironmentFile=$APP_DIR/.env
+ExecStart=$APP_DIR/venv/bin/gunicorn -w 2 -k gthread --threads 8 -t 180 -b 127.0.0.1:8000 app:app
+Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now gude
+echo "✅ 顾得服务已启动（systemctl status gude 可查看）"
+
+cat <<'NEXT'
+
+------------------------------------------------------------
+接下来（顾得会带你做）：
+1) 编辑密钥：   nano .env   填好 OPENROUTER_API_KEY 后  →  sudo systemctl restart gude
+2) 配置 Nginx + 域名 + 免费 SSL：
+   sudo nano /etc/nginx/sites-available/gude     # 内容见 platform/README.md
+   sudo ln -s /etc/nginx/sites-available/gude /etc/nginx/sites-enabled/
+   sudo nginx -t && sudo systemctl reload nginx
+   sudo certbot --nginx -d 你的域名
+3) 浏览器打开  https://你的域名  → 顾得就上线啦！
+------------------------------------------------------------
+NEXT

@@ -1,0 +1,6 @@
+.env
+memories.db
+persona.md
+venv/
+__pycache__/
+*.pyc

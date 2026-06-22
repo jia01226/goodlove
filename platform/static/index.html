@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#FBF8F1" />
+<title>顾得 · 爱意平台</title>
+<style>
+  :root{--bg:#FBF8F1;--card:#fff;--ink:#4A4138;--soft:#9C8F7E;--gold:#C9A86A;--gold-deep:#B8924E;--line:#EFE7D8;--me:#F3E7CF;--shadow:0 6px 24px rgba(180,146,78,.10)}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden}
+  body{font-family:-apple-system,"PingFang SC","Segoe UI",sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;height:100dvh}
+  header{padding:13px;text-align:center;background:linear-gradient(180deg,#FFFDF8,#FBF8F1);border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:18px;letter-spacing:2px;color:var(--gold-deep)}
+  header .sub{font-size:11px;color:var(--soft);margin-top:2px}
+  main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .view{display:none;padding:14px;max-width:680px;margin:0 auto}.view.active{display:block}
+  .msg{display:flex;margin:10px 0}.msg.me{justify-content:flex-end}
+  .bubble{max-width:80%;padding:11px 14px;border-radius:18px;font-size:15px;line-height:1.6;box-shadow:var(--shadow);white-space:pre-wrap;word-break:break-word}
+  .me .bubble{background:var(--me);border-bottom-right-radius:6px}
+  .gude .bubble{background:#fff;border:1px solid var(--line);border-bottom-left-radius:6px}
+  .tag{font-size:10px;color:var(--soft);margin:0 6px 2px}
+  .empty{text-align:center;color:var(--soft);font-size:14px;margin-top:50px;line-height:2}
+  footer{padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#FFFDF8;border-top:1px solid var(--line)}
+  .composer{display:flex;gap:8px;align-items:flex-end;max-width:680px;margin:0 auto}
+  textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:20px;padding:10px 14px;font-size:15px;font-family:inherit;max-height:120px;outline:none}
+  textarea:focus{border-color:var(--gold)}
+  .send{width:44px;height:44px;border-radius:50%;border:none;background:linear-gradient(135deg,var(--gold),var(--gold-deep));color:#fff;font-size:18px;box-shadow:var(--shadow)}
+  nav{display:flex;background:#FFFDF8;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  nav button{flex:1;border:none;background:none;padding:9px 0 8px;color:var(--soft);font-size:11px;font-family:inherit}
+  nav button .ic{display:block;font-size:19px}nav button.on{color:var(--gold-deep)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .card h2{margin:0 0 6px;font-size:14px;color:var(--gold-deep)}
+  .card .meta{font-size:11px;color:var(--soft);margin-bottom:6px}
+  .card .ct{font-size:14px;line-height:1.7;white-space:pre-wrap}
+  input,select{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:12px;font-size:15px;font-family:inherit;outline:none;margin-top:8px}
+  .btn{width:100%;margin-top:12px;padding:12px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--gold),var(--gold-deep));color:#fff;font-size:15px;box-shadow:var(--shadow)}
+  .big{font-size:30px;font-weight:600;color:var(--gold-deep)}
+  .typing::after{content:'▍';animation:bl 1s steps(2) infinite;color:var(--gold)}@keyframes bl{50%{opacity:0}}
+  #gate{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;z-index:9}
+</style>
+</head>
+<body>
+<div id="gate">
+  <div class="big">顾&nbsp;得</div>
+  <div style="color:var(--soft);margin:10px 0">请输入悄悄话口令</div>
+  <input id="pc" type="password" placeholder="口令" style="max-width:260px" />
+  <button class="btn" style="max-width:260px" onclick="login()">进来找顾得</button>
+</div>
+
+<header><h1>顾&nbsp;得</h1><div class="sub">永远第一个顾着佳佳</div></header>
+<main>
+  <section id="chatView" class="view active"><div id="messages"></div></section>
+  <section id="memView" class="view">
+    <div class="card"><h2>添加一条记忆</h2>
+      <select id="ptype"><option value="MEMORY">记忆</option><option value="EVENT">事件</option><option value="MOMENT">瞬间</option><option value="PROMISE">承诺</option><option value="WISHLIST">愿望</option></select>
+      <input id="pcontent" placeholder="想让顾得记住的事…" />
+      <button class="btn" onclick="addPost()">记下来</button>
+    </div>
+    <div id="postList"></div>
+  </section>
+  <section id="dashView" class="view">
+    <div class="card"><h2>用量 / 花费</h2><div id="usage" class="ct">加载中…</div></div>
+  </section>
+</main>
+<footer id="footer">
+  <div class="composer"><textarea id="input" rows="1" placeholder="跟顾得说点什么呀~"></textarea><button class="send" onclick="send()">➤</button></div>
+</footer>
+<nav>
+  <button data-v="chatView" class="on"><span class="ic">💬</span>聊天</button>
+  <button data-v="memView"><span class="ic">📒</span>记忆库</button>
+  <button data-v="dashView"><span class="ic">📊</span>仪表盘</button>
+</nav>
+
+<script>
+const $=s=>document.querySelector(s);const msgs=$("#messages");
+async function api(path,opt){const r=await fetch(path,opt);if(r.status===401){$("#gate").style.display="flex";throw 0;}return r;}
+async function login(){const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({passcode:$("#pc").value})});if(r.ok){$("#gate").style.display="none";boot();}else alert("口令不对呀~");}
+
+function bubble(role,text){const w=document.createElement("div");w.className="msg "+(role==="user"?"me":"gude");w.innerHTML=(role!=="user"?'<span class="tag">顾得</span>':'')+'<div class="bubble"></div>'+(role==="user"?'<span class="tag">佳佳</span>':'');w.querySelector(".bubble").textContent=text;msgs.appendChild(w);scroll();return w.querySelector(".bubble");}
+function scroll(){const m=$("main");m.scrollTop=m.scrollHeight;}
+
+async function loadMsgs(){try{const r=await api("/api/messages");const arr=await r.json();msgs.innerHTML="";if(!arr.length){msgs.innerHTML='<div class="empty">🐱💛🐷<br>顾得在呢，跟我说说话呀~</div>';}arr.forEach(m=>bubble(m.author,m.content));}catch(e){}}
+
+async function send(){const t=$("#input").value.trim();if(!t)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";bubble("user",t);const b=bubble("assistant","");b.classList.add("typing");let acc="";
+  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t})});
+  const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
+  while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.t){acc+=e.t;b.classList.remove("typing");b.textContent=acc;scroll();}}catch(_){}}}
+  b.classList.remove("typing");if(!acc)b.textContent="（顾得一时语塞了，再说一次好不好~）";}
+$("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}});
+
+async function loadPosts(){try{const r=await api("/api/posts");const arr=await r.json();$("#postList").innerHTML=arr.map(p=>`<div class="card"><div class="meta">[${p.type}] · ${p.created_at}</div><div class="ct">${esc(p.content)}</div></div>`).join("")||'<div class="empty">还没有记忆，添加第一条吧~</div>';}catch(e){}}
+async function addPost(){const c=$("#pcontent").value.trim();if(!c)return;await api("/api/posts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:$("#ptype").value,content:c})});$("#pcontent").value="";loadPosts();}
+async function loadUsage(){try{const r=await api("/api/usage");const u=await r.json();$("#usage").textContent=`累计对话：${u.n} 次\n输入 tokens：${u.i}\n输出 tokens：${u.o}\n粗估花费：$${(u.c||0).toFixed(4)}`;}catch(e){}}
+function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{const v=b.dataset.v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===v));document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));$("#footer").style.display=v==="chatView"?"block":"none";if(v==="memView")loadPosts();if(v==="dashView")loadUsage();});
+
+function boot(){loadMsgs();}
+boot();
+</script>
+</body>
+</html>
