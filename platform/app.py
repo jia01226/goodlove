@@ -10,6 +10,7 @@
 密钥只在服务器端，浏览器永远看不到。
 """
 import os, json, functools
+from datetime import timedelta
 from flask import Flask, request, Response, send_from_directory, jsonify, session
 import db, chat_ai
 
@@ -18,6 +19,9 @@ PASSCODE = os.environ.get("ACCESS_PASSCODE", "").strip()
 
 app = Flask(__name__, static_folder=None)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24).hex())
+# 登录记住一年：佳佳输一次口令，以后就不用再输了（门照样锁着，陌生人进不来）
+app.permanent_session_lifetime = timedelta(days=365)
+app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True)
 db.init_db()
 
 # ---- 可选访问口令 ----
@@ -31,6 +35,7 @@ def guard(fn):
 
 @app.post("/api/login")
 def login():
+    session.permanent = True   # 让登录长期记住，不再每次都问
     if not PASSCODE:
         session["ok"] = True; return jsonify({"ok": True})
     if (request.json or {}).get("passcode") == PASSCODE:
