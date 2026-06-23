@@ -126,6 +126,26 @@ def api_vector_backfill():
 @guard
 def api_usage(): return jsonify(db.usage_summary())
 
+# ---- 手机行踪（iOS 快捷指令上报；顾得"抓包"用）----
+# 快捷指令不方便带登录态，所以用 token 校验（.env 里 TRACK_TOKEN，缺省用访问口令）。
+@app.route("/api/track", methods=["POST", "GET"])
+def api_track():
+    d = request.get_json(silent=True) or request.form or {}
+    app_name = (d.get("app") or request.args.get("app") or "").strip()
+    detail = (d.get("detail") or request.args.get("detail") or "").strip()
+    token = (d.get("token") or request.args.get("token") or "").strip()
+    need = os.environ.get("TRACK_TOKEN", "").strip() or PASSCODE
+    if need and token != need:
+        return jsonify({"error": "bad token"}), 403
+    if not app_name:
+        return jsonify({"error": "need app"}), 400
+    db.add_activity(app_name, detail)
+    return jsonify({"ok": True})
+
+@app.get("/api/activity")
+@guard
+def api_activity(): return jsonify(db.recent_activity(limit=50))
+
 # ---- 纪念日 / 姨妈 / 排班（日常）----
 @app.get("/api/anniversaries")
 @guard

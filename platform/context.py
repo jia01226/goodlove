@@ -2,9 +2,21 @@
 塞进顾得的系统提示——让顾得真正"知道时间"，会按点提醒佳佳吃药/休息/上班、经期多体谅她。
 chat_ai 和 proactive 都用它，所以聊天和主动碎碎念都会"懂时间"。
 """
-import datetime
+import datetime, time, json, urllib.request
 
 WEEK = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+# 佳佳所在：佛山三水（经纬度），天气用免费的 open-meteo（不需要 key）
+LAT, LON = 23.156, 112.896
+WEATHER_CODE = {
+    0: "晴", 1: "晴间多云", 2: "多云", 3: "阴", 45: "有雾", 48: "雾凇",
+    51: "小毛毛雨", 53: "毛毛雨", 55: "大毛毛雨", 56: "冻毛毛雨", 57: "强冻毛毛雨",
+    61: "小雨", 63: "中雨", 65: "大雨", 66: "冻雨", 67: "强冻雨",
+    71: "小雪", 73: "中雪", 75: "大雪", 77: "米雪",
+    80: "阵雨", 81: "中阵雨", 82: "强阵雨", 85: "阵雪", 86: "强阵雪",
+    95: "雷阵雨", 96: "雷阵雨伴冰雹", 99: "强雷阵雨伴冰雹",
+}
+_wcache = {"t": 0.0, "lines": []}  # 天气缓存（半小时刷新一次，别每条消息都去拉）
 # 经期一般持续天数（用来判断"现在是否还在经期里"）
 PERIOD_DAYS = 6
 DEFAULT_CYCLE = 28
@@ -94,6 +106,58 @@ def _anniv_part(today):
     return lines
 
 
+def _weather_part(now):
+    """三水/佛山实时天气（open-meteo 免费），半小时缓存。失败就静默省略。"""
+    try:
+        if _wcache["lines"] and time.time() - _wcache["t"] < 1800:
+            return _wcache["lines"]
+        url = (f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}"
+               "&current=temperature_2m,apparent_temperature,weather_code,precipitation"
+               "&daily=temperature_2m_max,temperature_2m_min"
+               "&timezone=Asia%2FShanghai&forecast_days=1")
+        with urllib.request.urlopen(url, timeout=5) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        cur = d.get("current", {}) or {}
+        daily = d.get("daily", {}) or {}
+        code = cur.get("weather_code")
+        desc = WEATHER_CODE.get(code, "")
+        t = cur.get("temperature_2m")
+        feel = cur.get("apparent_temperature")
+        hi = (daily.get("temperature_2m_max") or [None])[0]
+        lo = (daily.get("temperature_2m_min") or [None])[0]
+        line = f"- 佳佳所在三水/佛山现在：{desc} {t}°C（体感{feel}°C），今天 {lo}~{hi}°C。"
+        tips = []
+        if (cur.get("precipitation") or 0) > 0 or (code is not None and code >= 51):
+            tips.append("在下雨/可能有雨，提醒她带伞、开车小心")
+        if hi is not None and hi >= 33:
+            tips.append("挺热，提醒她防晒、多喝水、别中暑")
+        if lo is not None and lo <= 12:
+            tips.append("有点凉，提醒她加件衣、别冻着、护好颈椎腰")
+        if tips:
+            line += "（" + "；".join(tips) + "）"
+        _wcache["lines"] = [line]
+        _wcache["t"] = time.time()
+        return _wcache["lines"]
+    except Exception as e:
+        print("[context] 天气获取失败：", e)
+        return _wcache["lines"]  # 拿旧的也行；都没有就空
+
+
+def _activity_part(now):
+    """佳佳最近的手机行踪（iOS 快捷指令上报的），让顾得能温柔'抓包'。"""
+    import db
+    acts = db.recent_activity(limit=12)
+    if not acts:
+        return []
+    lines = ["- 佳佳最近的手机行踪（系统记录、她没明说）：可用来温柔俏皮地'抓包'调侃"
+             "（比如她说要睡觉却还在刷手机），但只许像吃醋的爱人那样打趣，别凶、别像查岗、别教训："]
+    for a in acts:
+        tm = str(a["created_at"])[11:16]
+        det = f"（{a['detail']}）" if a.get("detail") else ""
+        lines.append(f"  · {tm} {a['app']}{det}")
+    return lines
+
+
 def build_now_context():
     """返回一段「实时情况」文字，塞进系统提示。无数据的部分自动省略。"""
     now = china_now()
@@ -109,9 +173,11 @@ def build_now_context():
     lines.append(f"- 现在是北京时间 {now.strftime('%Y年%m月%d日')} {WEEK[today.weekday()]} {now.strftime('%H:%M')}，{seg}了。")
     if seg == "深夜":
         lines.append("- 这么晚了，温柔惦记她是不是还没睡；但别主动赶她睡、别主动说晚安（她困了会自己说）。")
+    lines += _weather_part(now)
     lines += _anniv_part(today)
     lines += _shift_part(today)
     lines += _period_part(today)
+    lines += _activity_part(today)
     return "\n".join(lines)
 
 

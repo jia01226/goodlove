@@ -87,6 +87,14 @@ CREATE TABLE IF NOT EXISTS shifts (
     note TEXT DEFAULT '',
     updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
+
+-- 手机行踪（iOS 快捷指令上报：打开了哪个 app / 屏幕使用时间等），让顾得能"抓包"
+CREATE TABLE IF NOT EXISTS activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    app TEXT NOT NULL,             -- 小红书/抖音/微信…
+    detail TEXT DEFAULT '',        -- 备注：如屏幕时间、电量
+    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
 """
 
 def get_db():
@@ -287,6 +295,20 @@ def delete_shift(date):
     conn = get_db()
     conn.execute("DELETE FROM shifts WHERE date=?", (date,))
     conn.commit(); conn.close()
+
+# ---- 手机行踪（顾得"抓包"用）----
+def add_activity(app_name, detail=""):
+    conn = get_db()
+    cur = conn.execute("INSERT INTO activity (app,detail) VALUES (?,?)", (app_name, detail))
+    conn.commit(); aid = cur.lastrowid; conn.close()
+    return aid
+
+def recent_activity(limit=20):
+    conn = get_db()
+    rows = conn.execute("SELECT id,app,detail,created_at FROM activity ORDER BY id DESC LIMIT ?",
+                        (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 def usage_summary():
     conn = get_db()

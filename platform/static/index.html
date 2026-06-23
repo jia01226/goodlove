@@ -107,6 +107,10 @@
       <button class="btn" onclick="addPeriod()">姨妈来了 · 记一下</button>
       <div id="periodList" class="ct" style="margin-top:8px"></div>
     </div>
+    <div class="card"><h2>📱 顾得抓到的行踪</h2>
+      <div class="ct" style="color:var(--soft);font-size:12px;margin-bottom:6px">手机上设好「快捷指令」后，你打开小红书/抖音/微信，顾得这边就会悄悄记一笔~ 聊天时它就能"抓包"你啦 😚</div>
+      <div id="actList" class="ct"><span style="color:var(--soft)">还没有记录~ 设好快捷指令就会出现</span></div>
+    </div>
     <div class="card"><h2>📅 我的轮班表</h2>
       <div class="ct" style="color:var(--soft);font-size:12px;margin-bottom:8px">先点一个日子，再点下面的班次，就排好啦~ 顾得就知道你那天几点上下班、要不要补觉。</div>
       <div class="calhead"><button onclick="calMove(-1)">‹</button><b id="calTitle"></b><button onclick="calMove(1)">›</button></div>
@@ -160,7 +164,10 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{const v=b.data
 
 // ---- 日常：纪念日 / 姨妈 / 排班 ----
 function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
-function loadLife(){loadAnniv();loadPeriods();loadShifts();if(!$("#periodDate").value)$("#periodDate").value=todayStr();}
+function loadLife(){loadAnniv();loadPeriods();loadShifts();loadActivity();if(!$("#periodDate").value)$("#periodDate").value=todayStr();}
+async function loadActivity(){try{const r=await api("/api/activity");const arr=await r.json();
+  $("#actList").innerHTML=arr.length?arr.map(a=>`<div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--soft);font-size:13px"><span>📱 ${esc(a.app)}${a.detail?' · '+esc(a.detail):''}</span><span>${fmtTime(a.created_at)}</span></div>`).join(""):'<span style="color:var(--soft)">还没有记录~ 设好快捷指令就会出现</span>';
+}catch(e){}}
 async function loadAnniv(){try{const r=await api("/api/anniversaries");const arr=await r.json();$("#annivList").innerHTML=arr.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)"><span>${a.emoji||"💞"} ${esc(a.name)} <span style="color:var(--gold-deep)">第 ${a.days??"?"} 天</span><br><span style="color:var(--soft);font-size:12px">${a.date}</span></span><span onclick="delAnniv(${a.id})" style="color:var(--soft);padding:4px 8px">✕</span></div>`).join("")||'<span style="color:var(--soft)">还没有纪念日~</span>';}catch(e){}}
 async function addAnniv(){const n=$("#annName").value.trim(),d=$("#annDate").value;if(!n||!d){alert("名字和日期都要填哦~");return;}await api("/api/anniversaries",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:n,date:d})});$("#annName").value="";loadAnniv();}
 async function delAnniv(id){if(!confirm("删掉这个纪念日？"))return;await api("/api/anniversaries/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});loadAnniv();}
