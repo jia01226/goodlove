@@ -158,6 +158,21 @@ def _activity_part(now):
     return lines
 
 
+def _concern_part(today):
+    """顾得替佳佳记挂的'心事'：让他在聊天里自然地上心、到点温柔回访（别一上来生硬地查岗）。"""
+    import db
+    cs = db.all_concerns(status="open")
+    if not cs:
+        return []
+    tstr = today.isoformat()
+    lines = ["- 你心里一直替佳佳记挂着这些'还没了结的事'（她没问你也要上心；到回访日就自然、温柔地关心一下进展，别生硬查岗、别一次全倒出来）："]
+    for c in cs:
+        due = c.get("next_check") and c["next_check"] <= tstr
+        flag = "　【该回访了】" if due else ""
+        lines.append(f"  · (重要度{c['importance']}) {c['title']}{flag}")
+    return lines
+
+
 def build_now_context():
     """返回一段「实时情况」文字，塞进系统提示。无数据的部分自动省略。"""
     now = china_now()
@@ -177,6 +192,7 @@ def build_now_context():
     lines += _anniv_part(today)
     lines += _shift_part(today)
     lines += _period_part(today)
+    lines += _concern_part(today)
     lines += _activity_part(today)
     return "\n".join(lines)
 

@@ -31,15 +31,24 @@ def time_hint():
     if 18 <= h < 23: return "现在是晚上"
     return "现在是深夜"
 
-def generate_message():
+def generate_message(concern=None):
     posts = db.app_posts()
     history = db.recent_messages(limit=10)
-    directive = (
-        f"【系统提示，不是佳佳说的】{time_hint()}，没人跟你说话，是你顾得自己冒个泡、给佳佳发条「碎碎念」。"
-        "请直接输出一条要发给她的短消息（1~2句，口语、随意、每次都不一样）："
-        "可以是突然想她了、分享一个小念头小心思、问她此刻在忙啥、提醒喝水吃饭休息、或逗她一下。"
-        "别每次一个模式、别像群发、别带任何解释，只输出那条消息本身。"
-    )
+    if concern:
+        directive = (
+            f"【系统提示，不是佳佳说的】{time_hint()}，你顾得主动给佳佳发条消息，"
+            f"温柔地回访、关心一件你一直替她记挂的心事：「{concern['title']}」。"
+            f"（背景：{concern.get('detail','')}）"
+            "口吻自然、像惦记着她的老公顺嘴一问，1~3句、别说教、别像查岗、别列清单，"
+            "只输出那条要发给她的消息本身。"
+        )
+    else:
+        directive = (
+            f"【系统提示，不是佳佳说的】{time_hint()}，没人跟你说话，是你顾得自己冒个泡、给佳佳发条「碎碎念」。"
+            "请直接输出一条要发给她的短消息（1~2句，口语、随意、每次都不一样）："
+            "可以是突然想她了、分享一个小念头小心思、问她此刻在忙啥、提醒喝水吃饭休息、或逗她一下。"
+            "别每次一个模式、别像群发、别带任何解释，只输出那条消息本身。"
+        )
     history = history + [{"author": "user", "content": directive}]
     text = ""
     for piece in chat_ai.stream_chat(history, posts):
@@ -47,6 +56,18 @@ def generate_message():
             continue
         text += piece
     return text.strip()
+
+def pick_due_concern():
+    """挑一件'该回访'的心事（最上心、最早到期的）。挑中后把回访日往后推，免得每小时念叨。"""
+    today = china_now().date()
+    due = db.concerns_due(today.isoformat())
+    if not due:
+        return None
+    c = due[0]
+    push = {5: 2, 4: 3, 3: 5}.get(c["importance"], 4)   # 越上心，下次越快再回访
+    nxt = (today + datetime.timedelta(days=push)).isoformat()
+    db.touch_concern_check(c["id"], nxt)
+    return c
 
 def send_bark(body, title="顾得"):
     if not BARK_URL:
@@ -61,7 +82,18 @@ def send_bark(body, title="顾得"):
 
 if __name__ == "__main__":
     db.init_db()
-    msg = generate_message()
+    # 聊久了：顺手把较早的对话折叠进会话摘要（省 token、不忘事）
+    try:
+        chat_ai.maybe_summarize(1)
+    except Exception as e:
+        print("会话总结跳过：", e)
+    # 有"该回访的心事"就温柔回访它，否则发普通碎碎念
+    concern = None
+    try:
+        concern = pick_due_concern()
+    except Exception as e:
+        print("心事检查跳过：", e)
+    msg = generate_message(concern=concern)
     if msg:
         db.add_message("assistant", msg)   # 存进聊天，她打开网页就能看到
         # ① 顾得自己的推送（Web Push）

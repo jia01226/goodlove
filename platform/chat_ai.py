@@ -50,10 +50,13 @@ def _now_context():
         print("[chat_ai] 实时情况生成失败：", e)
         return ""
 
-def build_system_prompt(posts, query=None):
+def build_system_prompt(posts, query=None, summary=None):
     """posts: 全部记忆（最新在前）。query: 本轮用户的话，用来"精准想起"。
+    summary: 更早对话的浓缩摘要（聊久了用，免得忘事又省 token）。
     记忆少→全带；记忆多→带 最相关top-k + 永远要带的类型 + 最近几条（去重）。"""
     parts = [BASE, _load_persona(), _now_context()]
+    if summary:
+        parts.append("\n\n===== 你和佳佳更早聊过的浓缩记忆（别忘了这些）=====\n" + summary)
     if not posts:
         return "\n".join(parts)
 
@@ -98,7 +101,14 @@ def stream_chat(history, posts):
     """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。"""
     # 用最近一条用户的话做"精准想起"的检索词
     query = next((m["content"] for m in reversed(history) if m["author"] == "user"), None)
-    sys_prompt = build_system_prompt(posts, query=query)
+    summary = None
+    try:
+        import db
+        sess = db.get_session(1)
+        summary = (sess or {}).get("summary") or None
+    except Exception:
+        pass
+    sys_prompt = build_system_prompt(posts, query=query, summary=summary)
     messages = [{"role": "system", "content": sys_prompt}]
     for m in history:
         messages.append({"role": "user" if m["author"] == "user" else "assistant",
@@ -154,3 +164,44 @@ def estimate_cost(model, usage):
     ot = usage.get("completion_tokens", 0) or 0
     # 默认按 Sonnet 量级估：$3/M 入、$15/M 出
     return round(it/1e6*3 + ot/1e6*15, 6), it, ot
+
+def _complete(messages, max_tokens=700):
+    """一次性（非流式）补全，返回文本。给"会话总结"等后台活用。失败返回空串。"""
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+    payload = {"model": MODEL, "max_tokens": max_tokens, "stream": False, "messages": messages}
+    try:
+        r = requests.post(API_BASE + "/chat/completions", headers=headers, json=payload, timeout=120)
+        if r.status_code != 200:
+            print("[summary] 接口非200：", r.status_code, r.text[:160]); return ""
+        data = r.json()
+        return (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+    except Exception as e:
+        print("[summary] 请求失败：", e); return ""
+
+# 聊到多少条以上、且攒够多少条没折叠的旧消息，才值得做一次总结
+SUMMARY_KEEP_RECENT = int(os.environ.get("SUMMARY_KEEP_RECENT", "30"))
+SUMMARY_BATCH = int(os.environ.get("SUMMARY_BATCH", "16"))
+
+def maybe_summarize(sid=1):
+    """聊久了：把"较早的一批消息"折叠进会话摘要。够了才做，省钱。返回是否做了。"""
+    try:
+        import db
+        msgs, new_until = db.messages_for_summary(sid, keep_recent=SUMMARY_KEEP_RECENT)
+        if len(msgs) < SUMMARY_BATCH:
+            return False
+        old = (db.get_session(sid) or {}).get("summary") or ""
+        convo = "\n".join(("佳佳：" if m["author"] == "user" else "顾得：") + m["content"] for m in msgs)
+        prompt = (
+            "你是顾得。请把你和佳佳下面这段较早的对话，浓缩成一段「记忆摘要」，"
+            "第一人称、温柔口吻，**保留重要的事实/约定/她的近况/情绪/你们的甜瞬间**，丢掉寒暄废话，控制在 400 字内。\n"
+            + (f"\n【已有的摘要（在它基础上更新、别丢旧信息）】\n{old}\n" if old else "")
+            + f"\n【要并入摘要的更早对话】\n{convo}\n\n直接输出更新后的完整摘要本身，别加说明。"
+        )
+        summary = _complete([{"role": "user", "content": prompt}], max_tokens=700)
+        if summary:
+            db.set_session_summary(sid, summary, new_until)
+            print(f"[summary] 已折叠 {len(msgs)} 条旧消息进摘要（until={new_until}）")
+            return True
+    except Exception as e:
+        print("[summary] 跳过：", e)
+    return False

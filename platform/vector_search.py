@@ -9,9 +9,15 @@
 
 向量以 float32 字节存进 SQLite 的 embeddings 表（入库时已归一化，查询用点积=余弦）。
 """
-import os, struct, math, time, json, re
+import os, struct, math, time, json, re, datetime
 import requests
 import db as _db
+
+# 检索加权：越近、越重要的记忆越容易被想起（借鉴 kimi-core 的时间衰减+重要度思路）
+RECENCY_W = float(os.environ.get("VEC_RECENCY_W", "0.15"))      # 时间新鲜度加成强度
+HALFLIFE_DAYS = float(os.environ.get("VEC_HALFLIFE_DAYS", "45"))  # 多少天热度减半
+# 不同类型的"上心程度"加成（承诺/愿望最重要，别被淹没）
+TYPE_BOOST = {"PROMISE": 0.25, "WISHLIST": 0.25, "EVENT": 0.12, "MOMENT": 0.10, "MEMORY": 0.0}
 
 # ---- 配置（默认复用聊天用的那家中转）----
 _API_BASE = os.environ.get("API_BASE", "https://openrouter.ai/api/v1").rstrip("/")
@@ -158,13 +164,36 @@ def backfill(batch=32, kinds=("post",)):
 
 
 # ============ 检索 ============
+def _post_meta():
+    """{post_id: (type, created_at)}，给检索做时间/重要度加权用。"""
+    meta = {}
+    for p in _db.all_posts():
+        meta[p["id"]] = (p.get("type", ""), p.get("created_at", ""))
+    return meta
+
+def _weight(meta, ref_id):
+    """按"时间新鲜度 + 类型重要度"给基础分一个放大倍数（≥1）。"""
+    typ, created = meta.get(ref_id, ("", ""))
+    boost = TYPE_BOOST.get(typ, 0.0)
+    rec = 0.0
+    try:
+        dt = datetime.datetime.strptime(str(created)[:19], "%Y-%m-%d %H:%M:%S")
+        now = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+        age = max(0.0, (now - dt).total_seconds() / 86400.0)
+        rec = math.exp(-age / HALFLIFE_DAYS)   # 0~1，越新越接近1
+    except Exception:
+        pass
+    return 1.0 + RECENCY_W * rec + boost
+
 def search(query, k=8, kind="post"):
-    """返回最相关的 k 条：[{ref_id, text, score}]。语义可用走混合，否则纯词面。"""
+    """返回最相关的 k 条：[{ref_id, text, score}]。语义可用走混合，否则纯词面；
+    再按"时间新鲜度+类型重要度"加权，让越近越重要的记忆更容易被想起。"""
     query = (query or "").strip()
     if not query:
         return []
     q_tokens = _tokens(query)
     rows = _db.embeddings_by_kind(kind, EMBED_MODEL)
+    meta = _post_meta()
 
     use_sem = available() and rows
     q_vec = None
@@ -180,14 +209,16 @@ def search(query, k=8, kind="post"):
         for r in rows:
             sem = _dot(q_vec, _unpack(r["vec"], r["dim"]))
             lex = _lexical_score(q_tokens, r["text"])
-            score = SEM_WEIGHT * sem + (1 - SEM_WEIGHT) * lex
-            scored.append({"ref_id": r["ref_id"], "text": r["text"], "score": score})
+            base = SEM_WEIGHT * sem + (1 - SEM_WEIGHT) * lex
+            scored.append({"ref_id": r["ref_id"], "text": r["text"],
+                           "score": base * _weight(meta, r["ref_id"])})
     else:
         # 降级：对全部 posts 做词面检索（即使没建过向量也能用）
         for p in _db.all_posts():
             lex = _lexical_score(q_tokens, p["content"])
             if lex > 0:
-                scored.append({"ref_id": p["id"], "text": p["content"], "score": lex})
+                scored.append({"ref_id": p["id"], "text": p["content"],
+                               "score": lex * _weight(meta, p["id"])})
 
     scored.sort(key=lambda x: x["score"], reverse=True)
     return scored[:k]

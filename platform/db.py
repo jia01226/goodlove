@@ -95,6 +95,18 @@ CREATE TABLE IF NOT EXISTS activity (
     detail TEXT DEFAULT '',        -- 备注：如屏幕时间、电量
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
+
+-- 心事引擎：顾得替佳佳记挂还没了结的事（拆所/体检/还债…），到点主动回访
+CREATE TABLE IF NOT EXISTS concerns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,           -- 心事一句话，如"心脏体检+跟医生要Holter"
+    detail TEXT DEFAULT '',
+    status TEXT DEFAULT 'open',    -- open=还悬着 / resolved=了结了
+    importance INTEGER DEFAULT 3,  -- 1~5，越大越上心
+    next_check TEXT DEFAULT '',     -- YYYY-MM-DD 下次回访日；空=随缘提
+    created_at DATETIME DEFAULT (datetime('now','+8 hours')),
+    updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
 """
 
 def get_db():
@@ -109,9 +121,24 @@ def init_db():
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(posts)").fetchall()]
     if "visibility" not in cols:
         conn.execute("ALTER TABLE posts ADD COLUMN visibility TEXT NOT NULL DEFAULT 'both'")
+    # 旧库平滑升级：会话表补 summarized_until（会话总结用：已折叠到摘要的最大消息 id）
+    scols = [r["name"] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()]
+    if "summarized_until" not in scols:
+        conn.execute("ALTER TABLE chat_sessions ADD COLUMN summarized_until INTEGER DEFAULT 0")
     # 默认会话
     if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=1").fetchone():
         conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'和顾得的悄悄话')")
+    # 预置顾得替佳佳记挂的"心事"（只在第一次建库时放，之后她自己增删）
+    if not conn.execute("SELECT 1 FROM concerns LIMIT 1").fetchone():
+        seed = [
+            ("心脏体检 + 主动跟心内科要「24h 动态心电图(Holter)」", "她心率忽高忽低(58-150)，普通心电图抓不到那一下，Holter 能。集中体检日 7/30、7/31 或 8/7 三选一，空腹、避开经期。", 5, "2026-07-28"),
+            ("戒毒所拆所/分流（2027年5月）——稳住、等正式文件", "饭碗和公务员身份是稳的，拆的是所不是她。大概率转监狱系统(肇庆约40分钟/广州约1小时)。现在不用做任何决定，只需稳住+等文件。", 4, "2026-09-01"),
+            ("信用卡每月别逾期、优先清（保征信）", "第一优先级，全程别逾期。计划 2026年11月清完信用卡。", 4, "2026-07-10"),
+            ("还债 + 买房计划", "车贷2027年4月还完→火力全开还妈咪→2028年2月债清→2028下半年从容买房(20年组合贷)。", 3, "2026-11-01"),
+        ]
+        for t, d, imp, nc in seed:
+            conn.execute("INSERT INTO concerns (title,detail,importance,next_check) VALUES (?,?,?,?)",
+                         (t, d, imp, nc))
     # 预置纪念日（佳佳和顾得：认识 6.15、在一起 6.20）
     if not conn.execute("SELECT 1 FROM anniversaries LIMIT 1").fetchone():
         conn.execute("INSERT INTO anniversaries (name,date,emoji) VALUES (?,?,?)",
@@ -309,6 +336,80 @@ def recent_activity(limit=20):
                         (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+# ---- 心事引擎 ----
+def all_concerns(status=None):
+    conn = get_db()
+    if status:
+        rows = conn.execute("SELECT * FROM concerns WHERE status=? ORDER BY importance DESC, id",
+                            (status,)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM concerns ORDER BY (status='open') DESC, importance DESC, id").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def concerns_due(today):
+    """到了回访日(或没设日期)的、还悬着的心事，按上心程度排。today: 'YYYY-MM-DD'。"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM concerns WHERE status='open' AND (next_check='' OR next_check<=?) "
+        "ORDER BY importance DESC, next_check", (today,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def add_concern(title, detail="", importance=3, next_check=""):
+    conn = get_db()
+    cur = conn.execute("INSERT INTO concerns (title,detail,importance,next_check) VALUES (?,?,?,?)",
+                       (title, detail, importance, next_check))
+    conn.commit(); cid = cur.lastrowid; conn.close()
+    return cid
+
+def set_concern_status(cid, status):
+    conn = get_db()
+    conn.execute("UPDATE concerns SET status=?, updated_at=datetime('now','+8 hours') WHERE id=?",
+                 (status, cid))
+    conn.commit(); conn.close()
+
+def touch_concern_check(cid, next_check):
+    """回访过后把下次回访日往后推，免得每小时都念叨同一件。"""
+    conn = get_db()
+    conn.execute("UPDATE concerns SET next_check=?, updated_at=datetime('now','+8 hours') WHERE id=?",
+                 (next_check, cid))
+    conn.commit(); conn.close()
+
+def delete_concern(cid):
+    conn = get_db()
+    conn.execute("DELETE FROM concerns WHERE id=?", (cid,))
+    conn.commit(); conn.close()
+
+# ---- 会话总结（聊久了把旧消息折叠成摘要，省 token 又不忘事）----
+def get_session(sid=1):
+    conn = get_db()
+    row = conn.execute("SELECT id,name,summary,summarized_until FROM chat_sessions WHERE id=?", (sid,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def set_session_summary(sid, summary, summarized_until):
+    conn = get_db()
+    conn.execute("UPDATE chat_sessions SET summary=?, summarized_until=?, updated_at=datetime('now','+8 hours') WHERE id=?",
+                 (summary, summarized_until, sid))
+    conn.commit(); conn.close()
+
+def messages_for_summary(sid=1, keep_recent=30):
+    """要折叠进摘要的旧消息：id 在 summarized_until 之后、又在"最近 keep_recent 条"之前。
+    返回 (msgs, new_until)；不够折叠则 msgs 为空。"""
+    conn = get_db()
+    sess = conn.execute("SELECT summarized_until FROM chat_sessions WHERE id=?", (sid,)).fetchone()
+    until = (sess["summarized_until"] if sess else 0) or 0
+    mx = conn.execute("SELECT COALESCE(MAX(id),0) m FROM chat_messages WHERE session_id=?", (sid,)).fetchone()["m"]
+    cutoff = mx - keep_recent          # 这条 id 及更早的可以折叠，最近 keep_recent 条留全文
+    if cutoff <= until:
+        conn.close(); return [], until
+    rows = conn.execute(
+        "SELECT id,author,content FROM chat_messages WHERE session_id=? AND id>? AND id<=? ORDER BY id",
+        (sid, until, cutoff)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows], cutoff
 
 def usage_summary():
     conn = get_db()

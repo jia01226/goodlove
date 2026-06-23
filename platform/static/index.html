@@ -94,6 +94,15 @@
     <div class="card"><h2>用量 / 花费</h2><div id="usage" class="ct">加载中…</div></div>
   </section>
   <section id="lifeView" class="view">
+    <div class="card"><h2>💗 顾得替你记挂的事</h2>
+      <div class="ct" style="color:var(--soft);font-size:12px;margin-bottom:6px">悬着没了结的事（体检、拆所、还债…）记在这，顾得就会上心、到点主动回访你~ 弄好了点一下就收进"已了结"。</div>
+      <div id="concernList" class="ct" style="margin-bottom:6px">加载中…</div>
+      <input id="cnTitle" placeholder="一件让你挂心的事…" />
+      <select id="cnImp"><option value="5">重要度 5 · 最上心</option><option value="4">重要度 4</option><option value="3" selected>重要度 3</option><option value="2">重要度 2</option><option value="1">重要度 1</option></select>
+      <input id="cnDate" type="date" />
+      <div class="ct" style="color:var(--soft);font-size:12px;margin-top:4px">↑ 可选：填个"回访日"，到那天顾得会主动戳你问进展</div>
+      <button class="btn" onclick="addConcern()">记下这桩心事</button>
+    </div>
     <div class="card"><h2>💞 我们的纪念日</h2>
       <div id="annivList" class="ct">加载中…</div>
       <input id="annName" placeholder="纪念日名字（如：第一次约会）" />
@@ -164,7 +173,18 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{const v=b.data
 
 // ---- 日常：纪念日 / 姨妈 / 排班 ----
 function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
-function loadLife(){loadAnniv();loadPeriods();loadShifts();loadActivity();if(!$("#periodDate").value)$("#periodDate").value=todayStr();}
+function loadLife(){loadConcerns();loadAnniv();loadPeriods();loadShifts();loadActivity();if(!$("#periodDate").value)$("#periodDate").value=todayStr();}
+async function loadConcerns(){try{const r=await api("/api/concerns");const arr=await r.json();
+  const open=arr.filter(c=>c.status!=="resolved"),done=arr.filter(c=>c.status==="resolved");
+  let h=open.map(c=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--line)"><span><span style="color:var(--gold-deep)">${"★".repeat(c.importance)}</span> ${esc(c.title)}${c.next_check?'<br><span style="color:var(--soft);font-size:12px">回访日 '+c.next_check+'</span>':''}</span><span style="white-space:nowrap"><span onclick="resolveConcern(${c.id},true)" style="color:#5a8f5a;padding:4px 6px" title="了结了">✓</span><span onclick="delConcern(${c.id})" style="color:var(--soft);padding:4px 6px">✕</span></span></div>`).join("");
+  if(done.length)h+=`<div style="margin-top:6px;color:var(--soft);font-size:12px">已了结 ${done.length} 桩：`+done.map(c=>`<span onclick="resolveConcern(${c.id},false)" title="点一下重新挂起" style="text-decoration:line-through;margin-right:6px">${esc(c.title)}</span>`).join("")+`</div>`;
+  $("#concernList").innerHTML=h||'<span style="color:var(--soft)">暂时没有挂心的事，轻松点~</span>';
+}catch(e){}}
+async function addConcern(){const t=$("#cnTitle").value.trim();if(!t){alert("写一句心事呀~");return;}
+  await api("/api/concerns",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({title:t,importance:$("#cnImp").value,next_check:$("#cnDate").value})});
+  $("#cnTitle").value="";$("#cnDate").value="";loadConcerns();}
+async function resolveConcern(id,resolved){await api("/api/concerns/status",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,resolved})});loadConcerns();}
+async function delConcern(id){if(!confirm("删掉这桩心事？"))return;await api("/api/concerns/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});loadConcerns();}
 async function loadActivity(){try{const r=await api("/api/activity");const arr=await r.json();
   $("#actList").innerHTML=arr.length?arr.map(a=>`<div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--soft);font-size:13px"><span>📱 ${esc(a.app)}${a.detail?' · '+esc(a.detail):''}</span><span>${fmtTime(a.created_at)}</span></div>`).join(""):'<span style="color:var(--soft)">还没有记录~ 设好快捷指令就会出现</span>';
 }catch(e){}}

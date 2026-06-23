@@ -223,6 +223,38 @@ def api_shift_del():
     db.delete_shift((request.json or {}).get("date"))
     return jsonify({"ok": True})
 
+# ---- 心事引擎 ----
+@app.get("/api/concerns")
+@guard
+def api_concerns(): return jsonify(db.all_concerns())
+
+@app.post("/api/concerns")
+@guard
+def api_concern_add():
+    d = request.json or {}
+    title = (d.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "need title"}), 400
+    try:
+        imp = max(1, min(5, int(d.get("importance", 3))))
+    except Exception:
+        imp = 3
+    cid = db.add_concern(title, (d.get("detail") or "").strip(), imp, (d.get("next_check") or "").strip())
+    return jsonify({"id": cid})
+
+@app.post("/api/concerns/status")
+@guard
+def api_concern_status():
+    d = request.json or {}
+    db.set_concern_status(d.get("id"), "resolved" if d.get("resolved") else "open")
+    return jsonify({"ok": True})
+
+@app.post("/api/concerns/delete")
+@guard
+def api_concern_del():
+    db.delete_concern((request.json or {}).get("id"))
+    return jsonify({"ok": True})
+
 # ---- Web Push（顾得自己的推送）----
 @app.get("/api/push/vapid")
 def push_vapid():
