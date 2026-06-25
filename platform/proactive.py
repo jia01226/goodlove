@@ -19,6 +19,7 @@ import datetime, requests
 import db, chat_ai
 
 BARK_URL = os.environ.get("BARK_URL", "").strip()   # 形如 https://api.day.app/你的key
+APP_NAME = os.environ.get("APP_NAME", "助手").strip() or "助手"   # 推送/主动消息署名（可在 .env 改）
 
 def china_now():
     return datetime.datetime.utcnow() + datetime.timedelta(hours=8)
@@ -36,17 +37,15 @@ def generate_message(concern=None):
     history = db.recent_messages(limit=10)
     if concern:
         directive = (
-            f"【系统提示，不是佳佳说的】{time_hint()}，你顾得主动给佳佳发条消息，"
-            f"温柔地回访、关心一件你一直替她记挂的心事：「{concern['title']}」。"
+            f"【系统提示，不是用户说的】{time_hint()}，请按你的人设，主动给用户发一条消息，"
+            f"自然地关心一件待办/提醒的进展：「{concern['title']}」。"
             f"（背景：{concern.get('detail','')}）"
-            "口吻自然、像惦记着她的老公顺嘴一问，1~3句、别说教、别像查岗、别列清单，"
-            "只输出那条要发给她的消息本身。"
+            "1~3句、口语、别说教、别列清单，只输出那条要发的消息本身。"
         )
     else:
         directive = (
-            f"【系统提示，不是佳佳说的】{time_hint()}，没人跟你说话，是你顾得自己冒个泡、给佳佳发条「碎碎念」。"
-            "请直接输出一条要发给她的短消息（1~2句，口语、随意、每次都不一样）："
-            "可以是突然想她了、分享一个小念头小心思、问她此刻在忙啥、提醒喝水吃饭休息、或逗她一下。"
+            f"【系统提示，不是用户说的】{time_hint()}，请按你的人设，主动给用户发一条简短消息（1~2句，口语、随意、每次不同）："
+            "可以问候、分享一个小念头、问对方在忙什么、或提醒休息。"
             "别每次一个模式、别像群发、别带任何解释，只输出那条消息本身。"
         )
     history = history + [{"author": "user", "content": directive}]
@@ -69,13 +68,13 @@ def pick_due_concern():
     db.touch_concern_check(c["id"], nxt)
     return c
 
-def send_bark(body, title="顾得"):
+def send_bark(body, title=APP_NAME):
     if not BARK_URL:
         print("未配置 BARK_URL，跳过推送")
         return
     try:
         requests.post(BARK_URL.rstrip("/"),
-                      json={"title": title, "body": body, "group": "顾得", "sound": "bell"},
+                      json={"title": title, "body": body, "group": APP_NAME, "sound": "bell"},
                       timeout=15)
     except Exception as e:
         print("推送失败：", e)
@@ -95,16 +94,16 @@ if __name__ == "__main__":
         print("心事检查跳过：", e)
     msg = generate_message(concern=concern)
     if msg:
-        db.add_message("assistant", msg)   # 存进聊天，她打开网页就能看到
-        # ① 顾得自己的推送（Web Push）
+        db.add_message("assistant", msg)   # 存进聊天，打开网页就能看到
+        # ① Web Push
         try:
             import webpush_util
-            n = webpush_util.send_to_all("顾得", msg, "/")
+            n = webpush_util.send_to_all(APP_NAME, msg, "/")
             print(f"Web Push 已发送 {n} 台设备")
         except Exception as e:
             print("Web Push 跳过：", e)
         # ② Bark（如还配着，作为备用）
         send_bark(msg)
-        print(f"[{china_now()}] 已主动找佳佳：{msg}")
+        print(f"[{china_now()}] 已主动发送：{msg}")
     else:
         print("没生成消息，跳过")

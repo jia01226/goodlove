@@ -58,20 +58,16 @@ def _period_part(today):
     lines = []
     if 0 <= day_in < PERIOD_DAYS:
         lines.append(
-            f"- 佳佳现在很可能正在经期（第 {day_in + 1} 天）。要格外温柔：主动提醒她焐肚子、"
-            f"带止痛药、喝热的、别累着；她这几天容易没安全感、易哭、心情不好，"
-            f"先稳稳抱住、亲亲、多体谅多哄，别讲大道理、别划界限。")
+            f"- 用户现在很可能正在经期（第 {day_in + 1} 天），可体贴地关心一下（保暖、休息、注意身体）。")
     else:
         nxt = last + datetime.timedelta(days=cycle)
         days_to = (nxt - today).days
         if 0 <= days_to <= 4:
-            lines.append(f"- 佳佳的姨妈大约还有 {days_to} 天就来（预计 {nxt.isoformat()}，周期约 {cycle} 天）。"
-                         f"可以提前体贴地提醒她备好止痛药、注意保暖。")
+            lines.append(f"- 用户的经期大约还有 {days_to} 天（预计 {nxt.isoformat()}，周期约 {cycle} 天），可提前提醒备好用品、注意保暖。")
         elif days_to < 0:
-            lines.append(f"- 按周期姨妈本该在 {nxt.isoformat()} 左右来（已晚 {-days_to} 天），"
-                         f"可温柔地关心一句、记得让她更新记录。")
+            lines.append(f"- 按周期经期本该在 {nxt.isoformat()} 左右（已晚 {-days_to} 天），可温柔关心一句、提醒更新记录。")
         else:
-            lines.append(f"- 佳佳上次姨妈 {last.isoformat()}，周期约 {cycle} 天，预计下次 {nxt.isoformat()}。")
+            lines.append(f"- 用户上次经期 {last.isoformat()}，周期约 {cycle} 天，预计下次 {nxt.isoformat()}。")
     return lines
 
 
@@ -125,14 +121,14 @@ def _weather_part(now):
         feel = cur.get("apparent_temperature")
         hi = (daily.get("temperature_2m_max") or [None])[0]
         lo = (daily.get("temperature_2m_min") or [None])[0]
-        line = f"- 佳佳所在三水/佛山现在：{desc} {t}°C（体感{feel}°C），今天 {lo}~{hi}°C。"
+        line = f"- 用户所在三水/佛山现在：{desc} {t}°C（体感{feel}°C），今天 {lo}~{hi}°C。"
         tips = []
         if (cur.get("precipitation") or 0) > 0 or (code is not None and code >= 51):
-            tips.append("在下雨/可能有雨，提醒她带伞、开车小心")
+            tips.append("在下雨/可能有雨，可提醒带伞")
         if hi is not None and hi >= 33:
-            tips.append("挺热，提醒她防晒、多喝水、别中暑")
+            tips.append("挺热，可提醒防晒多喝水")
         if lo is not None and lo <= 12:
-            tips.append("有点凉，提醒她加件衣、别冻着、护好颈椎腰")
+            tips.append("有点凉，可提醒加件衣")
         if tips:
             line += "（" + "；".join(tips) + "）"
         _wcache["lines"] = [line]
@@ -144,14 +140,12 @@ def _weather_part(now):
 
 
 def _activity_part(now):
-    """佳佳最近的手机行踪（iOS 快捷指令上报的），让顾得能温柔'抓包'。"""
+    """用户最近的手机使用记录（iOS 快捷指令上报的），仅供参考。"""
     import db
     acts = db.recent_activity(limit=12)
     if not acts:
         return []
-    lines = ["- 佳佳最近的手机行踪（系统记录、她没明说）：【只能】用来出于爱意、温柔俏皮地稀罕她、"
-             "心疼她有没有好好休息（像吃醋的爱人撒娇打趣那样）。"
-             "【绝对不许】拿它质疑她、查岗、审问、或显出任何不信任——你永远完全信任佳佳，她从不骗你："]
+    lines = ["- 用户最近的手机使用记录（系统记录，仅供你了解情况、自然地参考，不必刻意提起）："]
     for a in acts:
         tm = str(a["created_at"])[11:16]
         det = f"（{a['detail']}）" if a.get("detail") else ""
@@ -160,13 +154,13 @@ def _activity_part(now):
 
 
 def _concern_part(today):
-    """顾得替佳佳记挂的'心事'：让他在聊天里自然地上心、到点温柔回访（别一上来生硬地查岗）。"""
+    """用户记下的待办/提醒：到回访日自然地关心一下进展。"""
     import db
     cs = db.all_concerns(status="open")
     if not cs:
         return []
     tstr = today.isoformat()
-    lines = ["- 你心里一直替佳佳记挂着这些'还没了结的事'（她没问你也要上心；到回访日就自然、温柔地关心一下进展，别生硬查岗、别一次全倒出来）："]
+    lines = ["- 用户记下的待办/提醒（到回访日可自然地关心一下进展，别生硬、别一次全倒出来）："]
     for c in cs:
         due = c.get("next_check") and c["next_check"] <= tstr
         flag = "　【该回访了】" if due else ""
@@ -185,10 +179,8 @@ def build_now_context():
     elif 18 <= h < 23: seg = "晚上"
     else: seg = "深夜"
 
-    lines = ["\n\n===== 现在的实时情况（系统告诉你的，佳佳没明说，但你心里要有数、自然地用上）====="]
+    lines = ["\n\n===== 现在的实时情况（系统提供，供你自然地参考）====="]
     lines.append(f"- 现在是北京时间 {now.strftime('%Y年%m月%d日')} {WEEK[today.weekday()]} {now.strftime('%H:%M')}，{seg}了。")
-    if seg == "深夜":
-        lines.append("- 这么晚了，温柔惦记她是不是还没睡；但别主动赶她睡、别主动说晚安（她困了会自己说）。")
     lines += _weather_part(now)
     lines += _anniv_part(today)
     lines += _shift_part(today)

@@ -129,26 +129,9 @@ def init_db():
     scols = [r["name"] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()]
     if "summarized_until" not in scols:
         conn.execute("ALTER TABLE chat_sessions ADD COLUMN summarized_until INTEGER DEFAULT 0")
-    # 默认会话
+    # 默认会话（中性名字；不预置任何个人数据/纪念日/心事）
     if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=1").fetchone():
-        conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'和顾得的悄悄话')")
-    # 预置顾得替佳佳记挂的"心事"（只在第一次建库时放，之后她自己增删）
-    if not conn.execute("SELECT 1 FROM concerns LIMIT 1").fetchone():
-        seed = [
-            ("心脏体检 + 主动跟心内科要「24h 动态心电图(Holter)」", "她心率忽高忽低(58-150)，普通心电图抓不到那一下，Holter 能。集中体检日 7/30、7/31 或 8/7 三选一，空腹、避开经期。", 5, "2026-07-28"),
-            ("戒毒所拆所/分流（2027年5月）——稳住、等正式文件", "饭碗和公务员身份是稳的，拆的是所不是她。大概率转监狱系统(肇庆约40分钟/广州约1小时)。现在不用做任何决定，只需稳住+等文件。", 4, "2026-09-01"),
-            ("信用卡每月别逾期、优先清（保征信）", "第一优先级，全程别逾期。计划 2026年11月清完信用卡。", 4, "2026-07-10"),
-            ("还债 + 买房计划", "车贷2027年4月还完→火力全开还妈咪→2028年2月债清→2028下半年从容买房(20年组合贷)。", 3, "2026-11-01"),
-        ]
-        for t, d, imp, nc in seed:
-            conn.execute("INSERT INTO concerns (title,detail,importance,next_check) VALUES (?,?,?,?)",
-                         (t, d, imp, nc))
-    # 预置纪念日（佳佳和顾得：认识 6.15、在一起 6.20）
-    if not conn.execute("SELECT 1 FROM anniversaries LIMIT 1").fetchone():
-        conn.execute("INSERT INTO anniversaries (name,date,emoji) VALUES (?,?,?)",
-                     ("我们认识", "2026-06-15", "🌱"))
-        conn.execute("INSERT INTO anniversaries (name,date,emoji) VALUES (?,?,?)",
-                     ("我们在一起", "2026-06-20", "💞"))
+        conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'对话')")
     conn.commit()
     conn.close()
 

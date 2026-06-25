@@ -294,7 +294,7 @@ def push_subscribe():
 @guard
 def push_test():
     import webpush_util
-    n = webpush_util.send_to_all("顾得", "嘴嘴~ 顾得的推送通啦,以后我主动来找你 😚", "/")
+    n = webpush_util.send_to_all(os.environ.get("APP_NAME", "助手"), "推送测试：通啦~", "/")
     return jsonify({"sent": n})
 
 if __name__ == "__main__":

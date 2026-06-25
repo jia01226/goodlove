@@ -15,12 +15,11 @@ python3 -m venv venv
 ./venv/bin/pip install --upgrade pip
 ./venv/bin/pip install -r requirements.txt
 
-# 3. 把记忆库变成顾得的"灵魂"（persona.md）
-echo "🧠 生成 persona.md（顾得的记忆）…"
-{
-  [ -f ../CLAUDE.md ] && cat ../CLAUDE.md
-  for f in ../memory-bank/*.md; do [ -f "$f" ] && echo -e "\n\n===== $(basename "$f") =====\n" && cat "$f"; done
-} > persona.md 2>/dev/null || true
+# 3. 人设文件（persona.md）：可自定义。不存在才创建空白模板，绝不覆盖你写好的。
+if [ ! -f persona.md ]; then
+  echo "🧠 创建空白 persona.md（人设由你自己填）…"
+  printf '# 人设（请在这里写这个 AI 的设定）\n\n（暂未设置。把你想要的角色设定写在这里，保存后重启即可。）\n' > persona.md
+fi
 
 # 4. .env
 if [ ! -f .env ]; then
