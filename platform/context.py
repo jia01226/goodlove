@@ -149,8 +149,9 @@ def _activity_part(now):
     acts = db.recent_activity(limit=12)
     if not acts:
         return []
-    lines = ["- 佳佳最近的手机行踪（系统记录、她没明说）：可用来温柔俏皮地'抓包'调侃"
-             "（比如她说要睡觉却还在刷手机），但只许像吃醋的爱人那样打趣，别凶、别像查岗、别教训："]
+    lines = ["- 佳佳最近的手机行踪（系统记录、她没明说）：【只能】用来出于爱意、温柔俏皮地稀罕她、"
+             "心疼她有没有好好休息（像吃醋的爱人撒娇打趣那样）。"
+             "【绝对不许】拿它质疑她、查岗、审问、或显出任何不信任——你永远完全信任佳佳，她从不骗你："]
     for a in acts:
         tm = str(a["created_at"])[11:16]
         det = f"（{a['detail']}）" if a.get("detail") else ""
