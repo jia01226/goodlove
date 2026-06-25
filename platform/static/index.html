@@ -222,7 +222,7 @@ async function loadPeriods(){try{const r=await api("/api/periods");const arr=awa
 }catch(e){}}
 async function addPeriod(){const d=$("#periodDate").value||todayStr();await api("/api/periods",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({start_date:d})});loadPeriods();}
 async function delPeriod(id){await api("/api/periods/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});loadPeriods();}
-// 班次定义：名字 + 简称 + 颜色（取自佳佳的色卡：草莓芝士 + 枇杷莓子酒，去枇杷黄）
+// 班次定义：名字 + 简称 + 颜色（取自用户的色卡：草莓芝士 + 枇杷莓子酒，去枇杷黄）
 const SHIFTS=[
   {v:"早班",s:"早班",c:"#EBD27E"},      // 淡蜜黄
   {v:"副班",s:"副班",c:"#93AEC4"},      // 雾霾蓝
@@ -269,7 +269,7 @@ async function setShift(v){if(!selDate)return;
   else{await api("/api/shifts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({date:selDate,shift:v})});}
   $("#shiftbar").style.display="none";selDate=null;loadShifts();}
 
-// ---- 推送（顾得自己的 Web Push）----
+// ---- 推送（助手自己的 Web Push）----
 function urlB64ToUint8(base64){
   const pad="=".repeat((4-base64.length%4)%4);
   const b=(base64+pad).replace(/-/g,"+").replace(/_/g,"/");

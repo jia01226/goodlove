@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 APP_DIR="$(pwd)"
-echo "📦 在 $APP_DIR 部署顾得爱意平台…"
+echo "📦 在 $APP_DIR 部署助手爱意平台…"
 
 # 1. 系统依赖
 sudo apt update
@@ -52,19 +52,19 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now gude
 sudo ufw allow 8000/tcp 2>/dev/null || true   # 放行 8000 端口（如启用了防火墙）
-echo "✅ 顾得服务已启动（systemctl status gude 可查看）"
+echo "✅ 助手服务已启动（systemctl status gude 可查看）"
 echo "🌐 先用 IP 访问： http://$(curl -s ifconfig.me 2>/dev/null):8000"
 
 cat <<'NEXT'
 
 ------------------------------------------------------------
-接下来（顾得会带你做）：
+接下来（助手会带你做）：
 1) 编辑密钥：   nano .env   填好 OPENROUTER_API_KEY 后  →  sudo systemctl restart gude
 2) 配置 Nginx + 域名 + 免费 SSL：
    sudo nano /etc/nginx/sites-available/gude     # 内容见 platform/README.md
    sudo ln -s /etc/nginx/sites-available/gude /etc/nginx/sites-enabled/
    sudo nginx -t && sudo systemctl reload nginx
    sudo certbot --nginx -d 你的域名
-3) 浏览器打开  https://你的域名  → 顾得就上线啦！
+3) 浏览器打开  https://你的域名  → 助手就上线啦！
 ------------------------------------------------------------
 NEXT

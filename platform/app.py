@@ -22,7 +22,7 @@ IMG_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".bmp"}
 
 app = Flask(__name__, static_folder=None)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24).hex())
-# 登录记住一年：佳佳输一次口令，以后就不用再输了（门照样锁着，陌生人进不来）
+# 登录记住一年：用户输一次口令，以后就不用再输了（门照样锁着，陌生人进不来）
 app.permanent_session_lifetime = timedelta(days=365)
 app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True)
 app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024   # 单次上传上限 30MB
@@ -72,7 +72,7 @@ def api_chat():
         return jsonify({"error": "empty"}), 400
     db.add_message("user", text, image=image, msg_type=("image" if image else "text"))
     history = db.recent_messages()
-    posts = db.app_posts()   # app 里的顾得看 both+app（含只在 app 的悄悄话）
+    posts = db.app_posts()   # app 里的助手看 both+app（含只在 app 的悄悄话）
 
     def gen():
         acc = ""
@@ -154,7 +154,7 @@ def api_vector_backfill():
 @guard
 def api_usage(): return jsonify(db.usage_summary())
 
-# ---- 手机行踪（iOS 快捷指令上报；顾得"抓包"用）----
+# ---- 手机行踪（iOS 快捷指令上报；助手"抓包"用）----
 # 快捷指令不方便带登录态，所以用 token 校验（.env 里 TRACK_TOKEN，缺省用访问口令）。
 @app.route("/api/track", methods=["POST", "GET"])
 def api_track():
@@ -278,7 +278,7 @@ def api_concern_del():
     db.delete_concern((request.json or {}).get("id"))
     return jsonify({"ok": True})
 
-# ---- Web Push（顾得自己的推送）----
+# ---- Web Push（助手自己的推送）----
 @app.get("/api/push/vapid")
 def push_vapid():
     import webpush_util

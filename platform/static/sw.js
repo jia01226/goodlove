@@ -1,12 +1,12 @@
-// 顾得 · Service Worker（接收推送 + 点击打开 app）
+// Service Worker（接收推送 + 点击打开 app）
 self.addEventListener("install", e => self.skipWaiting());
 self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
 
 self.addEventListener("push", event => {
-  let d = { title: "顾得", body: "", url: "/" };
+  let d = { title: "AI 助手", body: "", url: "/" };
   try { if (event.data) d = Object.assign(d, event.data.json()); } catch (_) {}
   event.waitUntil(
-    self.registration.showNotification(d.title || "顾得", {
+    self.registration.showNotification(d.title || "AI 助手", {
       body: d.body || "",
       icon: "/static/icon-192.png",
       badge: "/static/icon-192.png",

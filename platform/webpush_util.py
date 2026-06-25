@@ -1,4 +1,4 @@
-"""Web Push（顾得自己的推送）：VAPID 密钥 + 发送通知。
+"""Web Push（助手自己的推送）：VAPID 密钥 + 发送通知。
 首次运行自动生成 VAPID 密钥文件（vapid_private.pem）。
 """
 import os, json, base64

@@ -1,7 +1,7 @@
 {
-  "name": "顾得 · 佳顾得的爱",
-  "short_name": "顾得",
-  "description": "佳佳和顾得的小窝",
+  "name": "AI 助手",
+  "short_name": "AI 助手",
+  "description": "我的 AI 助手",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

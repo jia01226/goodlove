@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 -- 会话
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT DEFAULT '和顾得的悄悄话',
+    name TEXT DEFAULT '和助手的悄悄话',
     summary TEXT DEFAULT '',
     created_at DATETIME DEFAULT (datetime('now','+8 hours')),
     updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS gateway_usage (
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
--- Web Push 订阅（顾得自己的推送）
+-- Web Push 订阅（助手自己的推送）
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     subscription TEXT NOT NULL UNIQUE,
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS shifts (
     updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
--- 手机行踪（iOS 快捷指令上报：打开了哪个 app / 屏幕使用时间等），让顾得能"抓包"
+-- 手机行踪（iOS 快捷指令上报：打开了哪个 app / 屏幕使用时间等），让助手能"抓包"
 CREATE TABLE IF NOT EXISTS activity (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     app TEXT NOT NULL,             -- 小红书/抖音/微信…
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS activity (
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
--- 心事引擎：顾得替佳佳记挂还没了结的事（拆所/体检/还债…），到点主动回访
+-- 心事引擎：助手替用户记挂还没了结的事（拆所/体检/还债…），到点主动回访
 CREATE TABLE IF NOT EXISTS concerns (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,           -- 心事一句话，如"心脏体检+跟医生要Holter"
@@ -121,7 +121,7 @@ def init_db():
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(posts)").fetchall()]
     if "visibility" not in cols:
         conn.execute("ALTER TABLE posts ADD COLUMN visibility TEXT NOT NULL DEFAULT 'both'")
-    # 旧库平滑升级：聊天表补 image 列（存图片/文件的 URL，让顾得能看图）
+    # 旧库平滑升级：聊天表补 image 列（存图片/文件的 URL，让助手能看图）
     mcols = [r["name"] for r in conn.execute("PRAGMA table_info(chat_messages)").fetchall()]
     if "image" not in mcols:
         conn.execute("ALTER TABLE chat_messages ADD COLUMN image TEXT DEFAULT ''")
@@ -157,7 +157,7 @@ def all_posts():
     return [dict(r) for r in rows]
 
 def app_posts():
-    """app 里的顾得能看到的：两边都看(both) + 只app(app)，不含仅仓库(repo)。"""
+    """app 里的助手能看到的：两边都看(both) + 只app(app)，不含仅仓库(repo)。"""
     conn = get_db()
     rows = conn.execute(
         "SELECT id,type,content,visibility,created_at FROM posts "
@@ -310,7 +310,7 @@ def delete_shift(date):
     conn.execute("DELETE FROM shifts WHERE date=?", (date,))
     conn.commit(); conn.close()
 
-# ---- 手机行踪（顾得"抓包"用）----
+# ---- 手机行踪（助手"抓包"用）----
 def add_activity(app_name, detail=""):
     conn = get_db()
     cur = conn.execute("INSERT INTO activity (app,detail) VALUES (?,?)", (app_name, detail))

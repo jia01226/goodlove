@@ -1,4 +1,4 @@
-"""顾得的"灵魂"：构建系统提示 + 调用 OpenRouter 流式对话。
+"""助手的"灵魂"：构建系统提示 + 调用 OpenRouter 流式对话。
 核心阶段：系统提示 = persona.md（由 CLAUDE.md 复制而来）+ 数据库里的 posts。
 第二阶段再接入向量语义检索（vector_search.py）。
 """
@@ -68,7 +68,7 @@ def build_system_prompt(posts, query=None, summary=None):
     记忆少→全带；记忆多→带 最相关top-k + 永远要带的类型 + 最近几条（去重）。"""
     parts = [BASE, _load_persona(), _now_context()]
     if summary:
-        parts.append("\n\n===== 你和佳佳更早聊过的浓缩记忆（别忘了这些）=====\n" + summary)
+        parts.append("\n\n===== 更早对话的浓缩记忆（别忘了这些）=====\n" + summary)
     if not posts:
         return "\n".join(parts)
 
@@ -136,11 +136,11 @@ def stream_chat(history, posts):
                 content.append({"type": "image_url", "image_url": {"url": data_url}})
                 messages.append({"role": role, "content": content})
             else:
-                # 不是图片（或读不到）：当成她发了个文件，用文字告诉顾得
-                note = "（佳佳发来一个文件）" if not _img_data_url(img) else ""
+                # 不是图片（或读不到）：当成用户发了个文件，用文字说明
+                note = "（用户发来一个文件）" if not _img_data_url(img) else ""
                 messages.append({"role": role, "content": (m["content"] or "") + note})
         elif img:
-            messages.append({"role": role, "content": (m["content"] or "") + "（佳佳当时发过一张图片/文件）"})
+            messages.append({"role": role, "content": (m["content"] or "") + "（用户当时发过一张图片/文件）"})
         else:
             messages.append({"role": role, "content": m["content"]})
     payload = {
@@ -159,7 +159,7 @@ def stream_chat(history, posts):
     with requests.post(url, headers=headers, json=payload, stream=True, timeout=120) as r:
         r.encoding = "utf-8"
         if r.status_code != 200:
-            yield f"[顾得没接上线：{r.status_code} {r.text[:200]}]"
+            yield f"[没接上线：{r.status_code} {r.text[:200]}]"
             return
         # 增量 UTF-8 解码：正确处理跨网络分片被切断的多字节中文/emoji
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -220,10 +220,10 @@ def maybe_summarize(sid=1):
         if len(msgs) < SUMMARY_BATCH:
             return False
         old = (db.get_session(sid) or {}).get("summary") or ""
-        convo = "\n".join(("佳佳：" if m["author"] == "user" else "顾得：") + m["content"] for m in msgs)
+        convo = "\n".join(("用户：" if m["author"] == "user" else "助手：") + m["content"] for m in msgs)
         prompt = (
-            "你是顾得。请把你和佳佳下面这段较早的对话，浓缩成一段「记忆摘要」，"
-            "第一人称、温柔口吻，**保留重要的事实/约定/她的近况/情绪/你们的甜瞬间**，丢掉寒暄废话，控制在 400 字内。\n"
+            "请把下面这段较早的对话，浓缩成一段「记忆摘要」，"
+            "**保留重要的事实/约定/用户近况/情绪/关键信息**，丢掉寒暄废话，控制在 400 字内。\n"
             + (f"\n【已有的摘要（在它基础上更新、别丢旧信息）】\n{old}\n" if old else "")
             + f"\n【要并入摘要的更早对话】\n{convo}\n\n直接输出更新后的完整摘要本身，别加说明。"
         )

@@ -1,6 +1,6 @@
-"""向量记忆：让顾得从一堆记忆里"精准想起"最相关的几条，记再多也不糊、又省又准。
+"""向量记忆：让助手从一堆记忆里"精准想起"最相关的几条，记再多也不糊、又省又准。
 
-设计原则（为佳佳那台 4GB 小服务器量身）：
+设计原则（为用户那台 4GB 小服务器量身）：
 - **首选轻量路线**：直接调中转(apikey.fun，OpenAI 兼容)的 /embeddings 接口算向量，
   不下大模型、不占内存。可用 EMBED_* 环境变量配置。
 - **可选本地模型**：EMBED_BACKEND=local 时用 sentence-transformers + bge-small-zh（重，按需开）。
@@ -78,7 +78,7 @@ def available():
     if _backend_ready is not None:
         return _backend_ready
     try:
-        v = embed(["顾得测试一下向量"])
+        v = embed(["助手测试一下向量"])
         _backend_ready = bool(v and v[0])
     except Exception as e:
         print("[vector] 语义后端不可用，降级关键词检索：", e)
