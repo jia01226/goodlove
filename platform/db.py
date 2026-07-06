@@ -387,6 +387,13 @@ def delete_concern(cid):
     conn.execute("DELETE FROM concerns WHERE id=?", (cid,))
     conn.commit(); conn.close()
 
+def referenced_images():
+    """聊天里用到过的图片/文件名集合（uploads 里不在这份名单的=没人引用的废图）。"""
+    conn = get_db()
+    rows = conn.execute("SELECT DISTINCT image FROM chat_messages WHERE image != ''").fetchall()
+    conn.close()
+    return {r["image"].split("/")[-1] for r in rows if r["image"]}
+
 # ---- 枕边日记 ----
 def add_diary(title, content, mood="静", locked=0):
     conn = get_db()

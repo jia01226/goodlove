@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>图片管理</title>
+<style>
+:root{--bg:#FBF8F1;--ink:#5a4634;--soft:#a08d76;--line:#eee3d2;--gold:#b8963e;--danger:#c0564f;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink);
+  padding:calc(env(safe-area-inset-top) + 10px) 14px calc(env(safe-area-inset-bottom) + 90px);}
+header{max-width:680px;margin:0 auto 12px}
+.back{color:var(--soft);text-decoration:none;font-size:15px}
+h1{font-size:26px;margin:8px 0 4px}
+.sub{color:var(--soft);font-size:13px;line-height:1.6}
+main{max-width:680px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;margin-top:12px}
+.it{position:relative;border-radius:12px;overflow:hidden;background:#fff;border:1px solid var(--line);aspect-ratio:1}
+.it img{width:100%;height:100%;object-fit:cover;display:block}
+.it .file{display:flex;align-items:center;justify-content:center;height:100%;font-size:30px}
+.badge{position:absolute;left:6px;top:6px;font-size:10.5px;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.92)}
+.badge.used{color:var(--gold)}
+.badge.unused{color:var(--soft)}
+.tick{position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:50%;border:2px solid #fff;
+  background:rgba(0,0,0,.25);color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center}
+.it.sel{outline:3px solid var(--danger)}
+.it.sel .tick{background:var(--danger)}
+.meta{font-size:10.5px;color:#fff;background:rgba(0,0,0,.35);position:absolute;bottom:0;left:0;right:0;padding:2px 6px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
+  padding:10px 14px calc(env(safe-area-inset-bottom) + 10px);display:flex;gap:8px;max-width:100%}
+.bar button{flex:1;border:0;border-radius:12px;padding:12px 0;font-size:14.5px}
+#selBtn{background:#fff;border:1px solid var(--line);color:var(--ink)}
+#delBtn{background:var(--danger);color:#fff;display:none}
+#cleanBtn{background:var(--gold);color:#fff}
+.empty{text-align:center;color:var(--soft);padding:60px 0}
+#gate{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;z-index:9}
+#gate input{border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:16px;width:min(320px,80vw);text-align:center;margin:14px 0}
+#gate button{border:0;background:var(--ink);color:#fff;border-radius:12px;padding:12px 34px;font-size:16px}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="/">‹ 返回</a>
+  <h1>🖼 图片管理</h1>
+  <div class="sub">「用过」= 出现在聊天里的（有回忆的）· 「没用过」= 传了没发出去的废图<br/>
+  一键清理只删没用过的，纪念图绝不动。<span id="stat"></span></div>
+</header>
+<main><div class="grid" id="grid"></div><div class="empty" id="empty" style="display:none">这里空空的~</div></main>
+
+<div class="bar">
+  <button id="selBtn" onclick="toggleSel()">选择</button>
+  <button id="delBtn" onclick="delSel()">删除所选 (0)</button>
+  <button id="cleanBtn" onclick="cleanUnused()">🧹 一键清没用过的</button>
+</div>
+
+<div id="gate">
+  <div style="font-size:34px">🖼</div>
+  <input id="pc" type="password" placeholder="悄悄话口令" />
+  <button onclick="login()">进来</button>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+async function api(path,opt){const r=await fetch(path,opt);if(r.status===401){$("#gate").style.display="flex";throw 0;}return r;}
+async function login(){const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({passcode:$("#pc").value})});if(r.ok){$("#gate").style.display="none";load();}else alert("口令不对呀~");}
+
+let selMode=false,sel=new Set(),items=[];
+function fmtSize(b){return b>1048576?(b/1048576).toFixed(1)+"M":Math.max(1,Math.round(b/1024))+"K";}
+function fmtDate(t){const d=new Date(t*1000);return (d.getMonth()+1)+"/"+d.getDate();}
+
+async function load(){
+  const r=await api("/api/uploads/list");items=await r.json();
+  sel.clear();updateBar();
+  const g=$("#grid");g.innerHTML="";
+  $("#empty").style.display=items.length?"none":"block";
+  let total=0,unused=0;
+  for(const it of items){
+    total+=it.size;if(!it.used)unused++;
+    const d=document.createElement("div");d.className="it";d.dataset.name=it.name;
+    d.innerHTML=(it.is_image?`<img src="${it.url}" loading="lazy" />`:`<div class="file">📎</div>`)
+      +`<span class="badge ${it.used?"used":"unused"}">${it.used?"❤️ 用过":"没用过"}</span>`
+      +`<span class="tick" style="display:none">✓</span>`
+      +`<div class="meta">${fmtDate(it.mtime)} · ${fmtSize(it.size)}</div>`;
+    d.onclick=()=>{
+      if(!selMode){if(it.is_image)window.open(it.url);return;}
+      if(sel.has(it.name))sel.delete(it.name);else sel.add(it.name);
+      d.classList.toggle("sel",sel.has(it.name));updateBar();
+    };
+    g.appendChild(d);
+  }
+  $("#stat").textContent=` 共 ${items.length} 个 · 占 ${fmtSize(total)} · 没用过 ${unused} 个`;
+}
+function toggleSel(){
+  selMode=!selMode;sel.clear();
+  document.querySelectorAll(".it").forEach(d=>{d.classList.remove("sel");d.querySelector(".tick").style.display=selMode?"flex":"none";});
+  $("#selBtn").textContent=selMode?"取消":"选择";updateBar();
+}
+function updateBar(){
+  $("#delBtn").style.display=selMode?"block":"none";
+  $("#cleanBtn").style.display=selMode?"none":"block";
+  $("#delBtn").textContent=`删除所选 (${sel.size})`;
+}
+async function delSel(){
+  if(!sel.size)return;
+  if(!confirm(`删掉这 ${sel.size} 个？删了就找不回来啦`))return;
+  await api("/api/uploads/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({names:[...sel]})});
+  selMode=false;$("#selBtn").textContent="选择";load();
+}
+async function cleanUnused(){
+  const n=items.filter(x=>!x.used).length;
+  if(!n)return alert("没有废图，干干净净~");
+  if(!confirm(`要清掉 ${n} 个「没用过的」吗？聊天里出现过的一张都不会动。`))return;
+  const r=await api("/api/uploads/clean_unused",{method:"POST"});const d=await r.json();
+  alert(`清掉 ${d.deleted} 个 🧹`);load();
+}
+load().catch(()=>{});
+</script>
+</body>
+</html>
