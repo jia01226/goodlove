@@ -30,6 +30,9 @@ API_BASE = os.environ.get("API_BASE", "https://openrouter.ai/api/v1").rstrip("/"
 MODEL = os.environ.get("MODEL", "anthropic/claude-sonnet-4.5")
 API_KEY = os.environ.get("API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
 PERSONA_FILE = os.path.join(os.path.dirname(__file__), "persona.md")
+PERSONA_DIR = os.path.join(os.path.dirname(__file__), "personas")
+# 当前角色：.env 里 CHARACTER=柯 → 读 personas/柯.md；不设则用老的 persona.md
+CHARACTER = os.environ.get("CHARACTER", "").strip()
 
 BASE = (
     "你是一个 AI 助手。下面《人设》是使用者给你的设定，请按它来；"
@@ -38,6 +41,13 @@ BASE = (
 )
 
 def _load_persona():
+    """设了 CHARACTER 就读 personas/<角色>.md（换角色只改 .env 一行）；否则读老的 persona.md。"""
+    if CHARACTER:
+        try:
+            with open(os.path.join(PERSONA_DIR, CHARACTER + ".md"), encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            print(f"[chat_ai] personas/{CHARACTER}.md 不存在，回退 persona.md")
     try:
         with open(PERSONA_FILE, encoding="utf-8") as f:
             return f.read()
