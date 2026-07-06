@@ -147,6 +147,10 @@ def init_db():
     scols = [r["name"] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()]
     if "summarized_until" not in scols:
         conn.execute("ALTER TABLE chat_sessions ADD COLUMN summarized_until INTEGER DEFAULT 0")
+    # 旧库平滑升级：日记表补 kind 列（diary=睡前日记 / dream=昨晚的梦）
+    dcols = [r["name"] for r in conn.execute("PRAGMA table_info(diaries)").fetchall()]
+    if "kind" not in dcols:
+        conn.execute("ALTER TABLE diaries ADD COLUMN kind TEXT DEFAULT 'diary'")
     # 默认会话（中性名字；不预置任何个人数据/纪念日/心事）
     if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=1").fetchone():
         conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'对话')")
@@ -395,10 +399,10 @@ def referenced_images():
     return {r["image"].split("/")[-1] for r in rows if r["image"]}
 
 # ---- 枕边日记 ----
-def add_diary(title, content, mood="静", locked=0):
+def add_diary(title, content, mood="静", locked=0, kind="diary"):
     conn = get_db()
-    cur = conn.execute("INSERT INTO diaries (title,content,mood,locked) VALUES (?,?,?,?)",
-                       (title, content, mood, 1 if locked else 0))
+    cur = conn.execute("INSERT INTO diaries (title,content,mood,locked,kind) VALUES (?,?,?,?,?)",
+                       (title, content, mood, 1 if locked else 0, kind))
     conn.commit(); did = cur.lastrowid; conn.close()
     return did
 
@@ -411,10 +415,11 @@ def all_diaries(limit=100):
     conn.close()
     return [dict(r) for r in rows]
 
-def diary_written_today(today):
-    """今天(中国时间 YYYY-MM-DD)写过日记没？防止 cron 重复写。"""
+def diary_written_today(today, kind="diary"):
+    """今天(中国时间 YYYY-MM-DD)写过某类(日记/梦)没？防止 cron 重复写。"""
     conn = get_db()
-    row = conn.execute("SELECT 1 FROM diaries WHERE date(created_at)=? LIMIT 1", (today,)).fetchone()
+    row = conn.execute("SELECT 1 FROM diaries WHERE date(created_at)=? AND kind=? LIMIT 1",
+                       (today, kind)).fetchone()
     conn.close()
     return bool(row)
 

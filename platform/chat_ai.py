@@ -263,6 +263,112 @@ def write_diary(date=None):
     return {"title": title, "mood": (d.get("mood") or "静").strip()[:8],
             "content": content, "locked": 1 if d.get("locked") else 0}
 
+def _day_convo(date):
+    """某天的对话拼成文本；没聊过返回 None。"""
+    import db
+    msgs = db.messages_on_date(date)
+    if not msgs:
+        return None
+    return "\n".join(("用户：" if m["author"] == "user" else "我：") + m["content"] for m in msgs)[:8000]
+
+
+def _parse_json(text):
+    """容错解析模型输出里的 JSON（剥代码块围栏，抓最外层 {} 或 []）。失败返回 None。"""
+    import re
+    m = re.search(r"[\[{].*[\]}]", (text or "").replace("```json", "").replace("```", ""), re.S)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception as e:
+        print("[night] JSON 解析失败：", e)
+        return None
+
+
+def consolidate_memories(date=None):
+    """夜间"消化"（做梦的里子）：把当天对话里真正要紧的事提炼成 0~3 条记忆，存进记忆库。
+    宁缺毋滥：没有值得记的就返回空列表。返回 [(post_id, 内容)]。"""
+    import db, datetime
+    if not date:
+        date = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date().isoformat()
+    convo = _day_convo(date)
+    if not convo:
+        return []
+    prompt = (
+        "你是记忆整理员。从下面这天的对话里，提炼**真正值得长期记住**的事，存进记忆库。\n"
+        "规矩：\n"
+        "1. 宁缺毋滥：日常寒暄/闲聊不记；只记 会影响以后相处 的事（新事实、约定、愿望、开心或难过的大事）；\n"
+        "2. 最多 3 条，每条一句话、带上背景（谁/为什么/当时的情绪），像讲给未来的自己听；\n"
+        "3. type 从这里选：MEMORY(一般记忆)/EVENT(发生的事)/MOMENT(触动的瞬间)/PROMISE(约定承诺)/WISHLIST(愿望)。\n\n"
+        f"【这天({date})的对话】\n{convo}\n\n"
+        "只输出 JSON 数组（没值得记的输出 []，别加解释、别用代码块）："
+        '[{"type": "MEMORY", "content": "..."}]'
+    )
+    out = _complete([{"role": "user", "content": prompt}], max_tokens=600)
+    items = _parse_json(out)
+    if not isinstance(items, list):
+        return []
+    saved = []
+    for it in items[:3]:
+        content = (it.get("content") or "").strip() if isinstance(it, dict) else ""
+        if not content:
+            continue
+        typ = (it.get("type") or "MEMORY").strip().upper()
+        if typ not in ("MEMORY", "EVENT", "MOMENT", "PROMISE", "WISHLIST"):
+            typ = "MEMORY"
+        pid = db.add_post(typ, content)
+        try:
+            import vector_search
+            vector_search.index_post(pid, content)
+        except Exception as e:
+            print("[night] 新记忆向量索引失败（不影响保存）：", e)
+        saved.append((pid, content))
+    return saved
+
+
+def write_dream(date=None):
+    """夜间"做梦"（面子）：按《人设》生成一篇"昨晚的梦"，早上给对方翻。
+    梦的内容完全由人设驱动（不用任何默认梦库）；素材=当天对话+几条旧记忆。
+    返回 {title, mood, content} 或 None。"""
+    import db, datetime
+    if not date:
+        date = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date().isoformat()
+    convo = _day_convo(date)
+    if not convo:
+        return None   # 没聊过天就不做梦（没素材，编也编不真）
+    # 掺几条旧记忆当梦的底料（梦就是新旧记忆搅在一起）
+    old = ""
+    try:
+        posts = db.app_posts()
+        picks = [p["content"] for p in posts[3:60:11]][:4]   # 隔着取几条旧的，别总是最新几条
+        if picks:
+            old = "\n【旧记忆（梦的底料，可化用）】\n" + "\n".join("- " + c for c in picks)
+    except Exception:
+        pass
+    persona = _load_persona()
+    prompt = (
+        "现在是夜里，你睡着了，在做梦。请按你的《人设》，以第一人称写下这个梦——"
+        "明早对方会翻到它。\n"
+        "要求：\n"
+        "1. 梦要像梦：画面感、跳跃、不讲逻辑，但情感是真的；素材从今天的对话和旧记忆里化用；\n"
+        "2. 梦里出现的人只有你和对方，不出现任何别人（这条是铁律）；\n"
+        "3. 短一点，80~200 字；标题像一句梦话；\n"
+        "4. mood 固定填「梦」。\n\n"
+        f"【今天({date})的对话】\n{convo}\n{old}\n\n"
+        "只输出 JSON（别加解释、别用代码块）："
+        '{"title": "...", "mood": "梦", "content": "..."}'
+    )
+    messages = [{"role": "system", "content": BASE + persona},
+                {"role": "user", "content": prompt}]
+    d = _parse_json(_complete(messages, max_tokens=500))
+    if not isinstance(d, dict):
+        return None
+    title = (d.get("title") or "").strip()
+    content = (d.get("content") or "").strip()
+    if not title or not content:
+        return None
+    return {"title": title, "mood": "梦", "content": content}
+
 # 聊到多少条以上、且攒够多少条没折叠的旧消息，才值得做一次总结
 SUMMARY_KEEP_RECENT = int(os.environ.get("SUMMARY_KEEP_RECENT", "30"))
 SUMMARY_BATCH = int(os.environ.get("SUMMARY_BATCH", "16"))

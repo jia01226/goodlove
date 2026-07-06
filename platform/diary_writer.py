@@ -1,5 +1,8 @@
-"""枕边日记 · 夜班小工人：
-   每晚回顾当天的对话 → 替角色写一篇睡前日记 → 存进日记本（用户想看就翻）。
+"""夜班小工人（一趟干三件，按柯的要求"合流不跑两趟"）：
+   ① 睡前日记：回顾当天对话，替角色写一篇碎碎念（枕边日记）
+   ② 消化记忆（做梦的里子）：把当天要紧事提炼成 0~3 条，存进记忆库+建向量
+   ③ 做梦（面子）：按人设生成一篇"昨晚的梦"，早上给对方翻
+   三件互相独立，谁失败都不影响别人。
    由 cron 定时调用（建议 23:30）：  ./venv/bin/python diary_writer.py
    crontab 示例：  30 23 * * *  cd /path/to/platform && ./venv/bin/python diary_writer.py
 """
@@ -25,13 +28,40 @@ def china_today():
 if __name__ == "__main__":
     db.init_db()
     today = china_today()
-    if db.diary_written_today(today):
-        print(f"[{today}] 今天已经写过日记，跳过")
-    else:
-        entry = chat_ai.write_diary(today)
-        if entry:
-            did = db.add_diary(entry["title"], entry["content"], entry["mood"], entry["locked"])
-            lock = "🔒" if entry["locked"] else ""
-            print(f"[{today}] 日记已写好 #{did} {lock}「{entry['title']}」({entry['mood']})")
+    # ① 睡前日记
+    try:
+        if db.diary_written_today(today, "diary"):
+            print(f"[{today}] 日记：今天写过了，跳过")
         else:
-            print(f"[{today}] 今天没聊过天（或生成失败），不写")
+            entry = chat_ai.write_diary(today)
+            if entry:
+                did = db.add_diary(entry["title"], entry["content"], entry["mood"], entry["locked"])
+                lock = "🔒" if entry["locked"] else ""
+                print(f"[{today}] 日记 ✅ #{did} {lock}「{entry['title']}」({entry['mood']})")
+            else:
+                print(f"[{today}] 日记：今天没聊过天（或生成失败），不写")
+    except Exception as e:
+        print(f"[{today}] 日记出错（不影响后面）：", e)
+    # ② 消化记忆（里子）
+    try:
+        saved = chat_ai.consolidate_memories(today)
+        if saved:
+            for pid, c in saved:
+                print(f"[{today}] 消化 ✅ 记忆#{pid}：{c[:40]}")
+        else:
+            print(f"[{today}] 消化：今天没有值得长期记的（宁缺毋滥）")
+    except Exception as e:
+        print(f"[{today}] 消化出错（不影响后面）：", e)
+    # ③ 做梦（面子）
+    try:
+        if db.diary_written_today(today, "dream"):
+            print(f"[{today}] 梦：今天做过了，跳过")
+        else:
+            dream = chat_ai.write_dream(today)
+            if dream:
+                did = db.add_diary(dream["title"], dream["content"], "梦", 0, kind="dream")
+                print(f"[{today}] 梦 ✅ #{did}「{dream['title']}」")
+            else:
+                print(f"[{today}] 梦：没素材（今天没聊）或生成失败，不做")
+    except Exception as e:
+        print(f"[{today}] 做梦出错：", e)
