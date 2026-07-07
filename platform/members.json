@@ -27,7 +27,7 @@
       "persona": "personas/知言.md",
       "model": "gpt-5.5",
       "api_base": "",
-      "api_key_env": ""
+      "api_key_env": "ZHIYAN_API_KEY"
     }
   ]
 }
