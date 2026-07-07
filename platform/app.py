@@ -331,9 +331,11 @@ def api_group_chat():
     import group_chat
     data = request.json or {}
     text = (data.get("text") or "").strip()
-    if not text:
+    image = (data.get("image") or "").strip()
+    if not text and not image:
         return jsonify({"error": "empty"}), 400
-    db.add_message("user", text, session_id=GROUP_SESSION)
+    db.add_message("user", text, session_id=GROUP_SESSION,
+                   image=image, msg_type=("image" if image else "text"))
     member = group_chat.pick_speaker(text)
     if not member:
         return jsonify({"error": "no members"}), 500

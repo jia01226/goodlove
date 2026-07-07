@@ -49,10 +49,17 @@ footer{border-top:1px solid var(--line);background:var(--bg);padding:8px 10px ca
 <div id="messages"><div class="empty">加载中…</div></div>
 <footer>
   <div class="ats" id="ats"></div>
+  <div id="pendingBar" style="display:none;align-items:center;gap:8px;max-width:680px;margin:0 auto 6px;padding:6px 8px;background:#fff;border:1px solid var(--line);border-radius:12px">
+    <img id="pendingThumb" style="width:40px;height:40px;object-fit:cover;border-radius:8px;display:none" />
+    <span id="pendingName" style="flex:1;font-size:13px;color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <span onclick="clearPending()" style="color:var(--soft);padding:2px 8px">✕</span>
+  </div>
   <div class="composer">
+    <button class="send" style="background:#fff;border:1px solid var(--line);color:var(--gold);font-size:22px;line-height:1" onclick="document.getElementById('file').click()" title="拍照/相册/文件">＋</button>
     <textarea id="input" rows="1" placeholder="说点什么…（@谁 谁答，不@找默认的那位）"></textarea>
     <button class="send" onclick="send()">➤</button>
   </div>
+  <input id="file" type="file" style="display:none" onchange="onPickFile(this)" />
 </footer>
 
 <div id="gate">
@@ -70,17 +77,36 @@ function scroll(){msgs.scrollTop=msgs.scrollHeight;}
 function emojiOf(name){const m=MEMBERS.find(x=>x.name===name);return m?m.emoji:"🤖";}
 function fmt(s){const m=String(s||"").match(/[ T](\d{2}:\d{2})/);return m?m[1]:"";}
 
-function bubble(author,text,time){
+function isImg(u){return /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(u||"");}
+function bubble(author,text,time,image){
   const me=author==="user";
   const w=document.createElement("div");w.className="msg"+(me?" me":"");
   const name=me?"我":author;
   w.innerHTML=`<div class="ava">${me?"🙂":emojiOf(author)}</div>
     <div class="col"><div class="who">${name}${time?" · "+time:""}</div>
     <div class="bubble"></div></div>`;
-  w.querySelector(".bubble").textContent=text;
+  const bb=w.querySelector(".bubble");
+  if(image){
+    if(isImg(image)){const im=document.createElement("img");im.src=image;im.loading="lazy";
+      im.style.cssText="max-width:200px;max-height:240px;border-radius:10px;display:block;cursor:pointer";
+      im.onclick=()=>window.open(image);bb.appendChild(im);}
+    else{const a=document.createElement("a");a.href=image;a.target="_blank";
+      a.textContent="📎 "+image.split("/").pop();a.style.color="var(--gold)";bb.appendChild(a);}
+  }
+  if(text){const tx=document.createElement("span");tx.textContent=text;
+    if(image)tx.style.cssText="display:block;margin-top:6px";bb.appendChild(tx);}
   msgs.appendChild(w);scroll();
-  return w.querySelector(".bubble");
+  return bb;
 }
+let pending=null;
+async function onPickFile(input){const f=input.files&&input.files[0];input.value="";if(!f)return;
+  $("#pendingBar").style.display="flex";$("#pendingThumb").style.display="none";$("#pendingName").textContent="上传中… "+f.name;
+  try{const fd=new FormData();fd.append("file",f);const r=await api("/api/upload",{method:"POST",body:fd});const d=await r.json();
+    if(d.error){$("#pendingName").textContent="上传失败，再试一次~";return;}
+    pending=d;$("#pendingName").textContent=d.name||"已选好";
+    if(d.is_image){$("#pendingThumb").src=d.url;$("#pendingThumb").style.display="block";}
+  }catch(e){$("#pendingName").textContent="上传失败："+((e&&e.message)||e);}}
+function clearPending(){pending=null;$("#pendingBar").style.display="none";$("#pendingThumb").src="";$("#pendingName").textContent="";}
 
 async function boot(){
   try{
@@ -92,17 +118,18 @@ async function boot(){
     const h=await(await api("/api/group/messages")).json();
     msgs.innerHTML="";
     if(!h.length){msgs.innerHTML=`<div class="empty">群建好了,还没人说话——<br/>@一个人开个头吧 👥</div>`;}
-    for(const m of h)bubble(m.author,m.content,fmt(m.created_at));
+    for(const m of h)bubble(m.author,m.content,fmt(m.created_at),m.image);
   }catch(e){}
 }
 function atTa(n){const i=$("#input");if(!i.value.includes("@"+n))i.value="@"+n+" "+i.value;i.focus();}
 
 async function send(){
-  const t=$("#input").value.trim();if(!t)return;$("#input").value="";
+  const t=$("#input").value.trim();const img=pending?pending.url:"";
+  if(!t&&!img)return;$("#input").value="";
   if(msgs.querySelector(".empty"))msgs.innerHTML="";
-  bubble("user",t,new Date().toTimeString().slice(0,5));
+  bubble("user",t,new Date().toTimeString().slice(0,5),img);clearPending();
   let b=null,acc="";
-  const r=await api("/api/group/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t})});
+  const r=await api("/api/group/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img})});
   const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
   while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});
     let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);

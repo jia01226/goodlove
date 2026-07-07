@@ -90,12 +90,13 @@ def pick_speaker(text):
 
 
 def _transcript(msgs, me):
-    """群聊近况拼成台本：谁说的写谁的名。"""
+    """群聊近况拼成台本：谁说的写谁的名；带图的标注出来。"""
     lines = []
     for m in msgs:
         who = "佳佳" if m["author"] == "user" else m["author"]
         mark = "（你自己）" if who == me else ""
-        lines.append(f"{who}{mark}：{m['content']}")
+        img_note = "（发了一张图片/文件）" if m.get("image") else ""
+        lines.append(f"{who}{mark}：{m['content']}{img_note}")
     return "\n".join(lines)
 
 
@@ -120,6 +121,15 @@ def build_messages(member, msgs, posts):
             f"[{p['type']}] {p['content']}" for p in posts[:60])
     convo = _transcript(msgs, name)
     user = f"===== 群聊最近的对话 =====\n{convo}\n\n现在轮到你（{name}）发言："
+    # 最新一条带图的消息：把真图给它看（跟单聊一个省钱路数：只带最新那张）
+    last_img = next((m["image"] for m in reversed(msgs) if m.get("image")), None)
+    if last_img:
+        data_url = chat_ai._img_data_url(last_img)
+        if data_url:
+            return [{"role": "system", "content": sys},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": user + "\n（下面附上群里最新发的那张图）"},
+                        {"type": "image_url", "image_url": {"url": data_url}}]}]
     return [{"role": "system", "content": sys}, {"role": "user", "content": user}]
 
 
