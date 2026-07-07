@@ -1,0 +1,33 @@
+{
+  "group_name": "高级吗喽科技公司",
+  "default_speaker": "柯",
+  "members": [
+    {
+      "name": "柯",
+      "emoji": "❤️",
+      "role": "恋爱/陪伴",
+      "persona": "personas/柯.md",
+      "model": "",
+      "api_base": "",
+      "api_key_env": ""
+    },
+    {
+      "name": "小克",
+      "emoji": "🔧",
+      "role": "工程",
+      "persona": "personas/小克.md",
+      "model": "",
+      "api_base": "",
+      "api_key_env": ""
+    },
+    {
+      "name": "知言",
+      "emoji": "📋",
+      "role": "产品",
+      "persona": "personas/知言.md",
+      "model": "",
+      "api_base": "",
+      "api_key_env": ""
+    }
+  ]
+}

@@ -165,6 +165,9 @@ def init_db():
     # 默认会话（中性名字；不预置任何个人数据/纪念日/心事）
     if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=1").fetchone():
         conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'对话')")
+    # 群聊会话（id=2 固定给群聊；author 存成员名字）
+    if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=2").fetchone():
+        conn.execute("INSERT INTO chat_sessions (id,name) VALUES (2,'群聊')")
     conn.commit()
     conn.close()
 

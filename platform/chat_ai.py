@@ -153,19 +153,38 @@ def stream_chat(history, posts):
             messages.append({"role": role, "content": (m["content"] or "") + "（用户当时发过一张图片/文件）"})
         else:
             messages.append({"role": role, "content": m["content"]})
+    yield from stream_completion(messages)
+
+
+def stream_completion(messages, model=None, api_base=None, api_key=None, max_tokens=4096):
+    """通用流式补全：可指定模型/接口/密钥（群聊成员各连各家用）。
+    不传就用默认那家。逐段 yield 文本；最后 yield ('__usage__', usage)。"""
+    model = model or MODEL
+    api_base = (api_base or API_BASE).rstrip("/")
+    api_key = api_key or API_KEY
     payload = {
-        "model": MODEL, "max_tokens": 4096, "stream": True,
+        "model": model, "max_tokens": max_tokens, "stream": True,
         "messages": messages,
     }
-    if "openrouter" in API_BASE:
+    if "openrouter" in api_base:
         payload["usage"] = {"include": True}   # OpenRouter：在最后一块返回用量
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "X-Title": "Gude-AiyiPingtai",
     }
     usage = {}
-    url = API_BASE + "/chat/completions"
+    url = api_base + "/chat/completions"
+    try:
+        yield from _stream_http(url, headers, payload, usage)
+    except Exception as e:
+        # 网络挂了/接口连不上：绝不崩，吐一句人话（消息也能正常落库）
+        print("[chat] 流式请求失败：", e)
+        yield f"[网络开小差了,没接上线,稍后再试试~]"
+    yield ("__usage__", usage)
+
+
+def _stream_http(url, headers, payload, usage):
     with requests.post(url, headers=headers, json=payload, stream=True, timeout=120) as r:
         r.encoding = "utf-8"
         if r.status_code != 200:
@@ -191,12 +210,11 @@ def stream_chat(history, posts):
                 except Exception:
                     continue
                 if ev.get("usage"):
-                    usage = ev["usage"]
+                    usage.update(ev["usage"])   # 就地更新，带回给 stream_completion
                 ch = ev.get("choices", [{}])[0]
                 piece = (ch.get("delta") or {}).get("content") or ""
                 if piece:
                     yield piece
-    yield ("__usage__", usage)
 
 def estimate_cost(model, usage):
     """粗略估算（OpenRouter 实际计费以账单为准）。返回美元。"""

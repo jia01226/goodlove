@@ -304,6 +304,64 @@ def api_concern_del():
     db.delete_concern((request.json or {}).get("id"))
     return jsonify({"ok": True})
 
+# ---- 群聊（高级吗喽科技公司：佳佳 + 柯/小克/知言）----
+GROUP_SESSION = 2
+
+@app.get("/group")
+def group_page(): return send_from_directory(STATIC, "group.html")
+
+@app.get("/api/group/members")
+@guard
+def api_group_members():
+    import group_chat
+    cfg = group_chat.load_config()
+    return jsonify({"group_name": cfg.get("group_name", "群聊"),
+                    "default_speaker": cfg.get("default_speaker", ""),
+                    "members": [{"name": m.get("name"), "emoji": m.get("emoji", "🤖"),
+                                 "role": m.get("role", "")} for m in cfg.get("members", [])]})
+
+@app.get("/api/group/messages")
+@guard
+def api_group_messages():
+    return jsonify(db.recent_messages(session_id=GROUP_SESSION, limit=200))
+
+@app.post("/api/group/chat")
+@guard
+def api_group_chat():
+    import group_chat
+    data = request.json or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "empty"}), 400
+    db.add_message("user", text, session_id=GROUP_SESSION)
+    member = group_chat.pick_speaker(text)
+    if not member:
+        return jsonify({"error": "no members"}), 500
+    history = db.recent_messages(session_id=GROUP_SESSION, limit=40)
+    posts = db.app_posts()
+
+    def gen():
+        # 先告诉前端这轮谁发言（好显示名字/头像）
+        yield ("data: " + json.dumps({"speaker": member["name"],
+                                      "emoji": member.get("emoji", "🤖")},
+                                     ensure_ascii=False) + "\n\n").encode("utf-8")
+        acc = ""
+        model_used = (member.get("model") or "").strip() or chat_ai.MODEL
+        for piece in group_chat.stream_reply(member, history, posts):
+            if isinstance(piece, tuple) and piece[0] == "__usage__":
+                usage = piece[1] or {}
+                cost, it, ot = chat_ai.estimate_cost(model_used, usage)
+                db.log_usage(model_used, it, ot, cost)
+                continue
+            acc += piece
+            yield ("data: " + json.dumps({"t": piece}, ensure_ascii=False) + "\n\n").encode("utf-8")
+        if acc:
+            db.add_message(member["name"], acc, session_id=GROUP_SESSION)
+        yield ("data: " + json.dumps({"done": True}, ensure_ascii=False) + "\n\n").encode("utf-8")
+
+    return Response(gen(), content_type="text/event-stream; charset=utf-8",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
 # ---- 图片/文件管理（清废图，留纪念图）----
 @app.get("/photos")
 def photos_page(): return send_from_directory(STATIC, "photos.html")
