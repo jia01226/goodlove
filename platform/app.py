@@ -70,8 +70,9 @@ def api_chat():
     image = (data.get("image") or "").strip()
     if not text and not image:
         return jsonify({"error": "empty"}), 400
-    db.add_message("user", text, image=image, msg_type=("image" if image else "text"))
-    history = db.recent_messages()
+    sid = _chat_sid(data.get("session_id"))
+    db.add_message("user", text, session_id=sid, image=image, msg_type=("image" if image else "text"))
+    history = db.recent_messages(session_id=sid)
     posts = db.app_posts()   # app 里的助手看 both+app（含只在 app 的悄悄话）
 
     def gen():
@@ -88,16 +89,55 @@ def api_chat():
             acc += piece
             yield ("data: " + json.dumps({"t": piece}, ensure_ascii=False) + "\n\n").encode("utf-8")
         if acc:
-            db.add_message("assistant", acc)
+            db.add_message("assistant", acc, session_id=sid)
         yield ("data: " + json.dumps({"done": True}, ensure_ascii=False) + "\n\n").encode("utf-8")
 
     return Response(gen(), content_type="text/event-stream; charset=utf-8",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 # ---- 历史 / 记忆 / 用量 ----
+def _chat_sid(raw):
+    """把前端传来的会话 id 收敛成合法的 1对1 会话 id：非法/群聊/不存在都退回主对话 1。"""
+    try:
+        sid = int(raw)
+    except (TypeError, ValueError):
+        return 1
+    if sid == db.GROUP_SID or not db.session_exists(sid):
+        return 1
+    return sid
+
 @app.get("/api/messages")
 @guard
-def api_messages(): return jsonify(db.recent_messages(limit=200))
+def api_messages():
+    sid = _chat_sid(request.args.get("session_id"))
+    return jsonify(db.recent_messages(session_id=sid, limit=200))
+
+# ---- 会话抽屉（多条 1对1 对话）----
+@app.get("/api/sessions")
+@guard
+def api_sessions(): return jsonify(db.list_chat_sessions())
+
+@app.post("/api/sessions")
+@guard
+def api_session_new():
+    name = ((request.json or {}).get("name") or "新对话").strip()[:30] or "新对话"
+    return jsonify({"id": db.create_chat_session(name), "name": name})
+
+@app.post("/api/sessions/rename")
+@guard
+def api_session_rename():
+    d = request.json or {}
+    name = (d.get("name") or "").strip()[:30]
+    if not d.get("id") or not name:
+        return jsonify({"error": "need id+name"}), 400
+    db.rename_chat_session(d["id"], name)
+    return jsonify({"ok": True})
+
+@app.post("/api/sessions/delete")
+@guard
+def api_session_delete():
+    ok = db.delete_chat_session((request.json or {}).get("id"))
+    return jsonify({"ok": ok})
 
 # ---- 上传照片/文件（拍照、相册、文件都走这里）----
 @app.post("/api/upload")

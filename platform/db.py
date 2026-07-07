@@ -520,6 +520,47 @@ def messages_on_date(date, session_id=1):
     return [dict(r) for r in rows]
 
 # ---- 会话总结（聊久了把旧消息折叠成摘要，省 token 又不忘事）----
+GROUP_SID = 2  # 群聊专用会话，会话抽屉里不列它
+
+def list_chat_sessions():
+    """1对1 的会话列表（不含群聊），带最后活动时间，最近的在前。"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT s.id, s.name, "
+        "(SELECT MAX(created_at) FROM chat_messages m WHERE m.session_id=s.id) AS last_at, "
+        "(SELECT COUNT(*) FROM chat_messages m WHERE m.session_id=s.id) AS n "
+        "FROM chat_sessions s WHERE s.id!=? "
+        "ORDER BY (last_at IS NULL), last_at DESC, s.id DESC", (GROUP_SID,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def create_chat_session(name="新对话"):
+    conn = get_db()
+    cur = conn.execute("INSERT INTO chat_sessions (name) VALUES (?)", (name,))
+    conn.commit(); sid = cur.lastrowid; conn.close()
+    return sid
+
+def rename_chat_session(sid, name):
+    conn = get_db()
+    conn.execute("UPDATE chat_sessions SET name=? WHERE id=?", (name, sid))
+    conn.commit(); conn.close()
+
+def delete_chat_session(sid):
+    """删一条会话及其消息。主对话(1)和群聊(2)不许删。"""
+    if int(sid) in (1, GROUP_SID):
+        return False
+    conn = get_db()
+    conn.execute("DELETE FROM chat_messages WHERE session_id=?", (sid,))
+    conn.execute("DELETE FROM chat_sessions WHERE id=?", (sid,))
+    conn.commit(); conn.close()
+    return True
+
+def session_exists(sid):
+    conn = get_db()
+    row = conn.execute("SELECT 1 FROM chat_sessions WHERE id=?", (sid,)).fetchone()
+    conn.close()
+    return bool(row)
+
 def get_session(sid=1):
     conn = get_db()
     row = conn.execute("SELECT id,name,summary,summarized_until FROM chat_sessions WHERE id=?", (sid,)).fetchone()

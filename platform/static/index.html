@@ -102,7 +102,21 @@
   <button class="btn" style="max-width:260px" onclick="login()">进入</button>
 </div>
 
-<header><h1>AI&nbsp;助手</h1><div class="sub"></div></header>
+<header style="position:relative">
+  <button id="drawerBtn" onclick="openDrawer()" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);border:none;background:none;font-size:20px;color:var(--gold-deep)">☰</button>
+  <h1 id="hdrTitle">AI&nbsp;助手</h1><div class="sub" id="hdrSub"></div>
+</header>
+<!-- 会话抽屉 -->
+<div id="drawer" style="position:fixed;inset:0;z-index:8;display:none">
+  <div onclick="closeDrawer()" style="position:absolute;inset:0;background:rgba(60,50,40,.28)"></div>
+  <div style="position:absolute;left:0;top:0;bottom:0;width:78%;max-width:320px;padding:calc(env(safe-area-inset-top) + 16px) 14px 16px;background:var(--glass);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);border-right:1px solid var(--line);overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <b style="color:var(--gold-deep);font-size:16px">对话</b>
+      <button onclick="newSession()" style="border:1px solid var(--line);background:var(--glass2);border-radius:12px;padding:6px 12px;font-size:13px;color:var(--gold-deep)">＋ 新对话</button>
+    </div>
+    <div id="sessList"></div>
+  </div>
+</div>
 <main>
   <section id="chatView" class="view active"><div id="messages"></div></section>
   <section id="memView" class="view">
@@ -128,6 +142,11 @@
         <button data-f="big" onclick="setFont('big')">大</button>
         <button data-f="huge" onclick="setFont('huge')">特大</button>
       </div>
+      <div class="themebar" style="margin-top:8px">
+        <button onclick="document.getElementById('wpfile').click()">🖼 自定义壁纸</button>
+        <button onclick="clearWallpaper()">恢复默认</button>
+      </div>
+      <input id="wpfile" type="file" accept="image/*" style="display:none" onchange="onPickWallpaper(this)" />
     </div>
     <div class="card">
       <h2>消息推送 🔔</h2>
@@ -278,10 +297,34 @@ function clearPending(){pending=null;$("#pendingBar").style.display="none";$("#p
 function scroll(){const m=$("main");m.scrollTop=m.scrollHeight;}
 function scrollHard(){scroll();requestAnimationFrame(scroll);setTimeout(scroll,150);setTimeout(scroll,500);}
 
-async function loadMsgs(){try{const r=await api("/api/messages");const arr=await r.json();msgs.innerHTML="";if(!arr.length){msgs.innerHTML='<div class="empty">跟它说说话吧~</div>';}arr.forEach(m=>bubble(m.author,m.content,fmtTime(m.created_at),m.image));scrollHard();}catch(e){}}
+// ---- 会话（多条对话切换）----
+let currentSid=(()=>{try{return +localStorage.getItem("sid")||1;}catch(_){return 1;}})();
+function setSid(id){currentSid=id;try{localStorage.setItem("sid",id);}catch(_){}}
+async function loadMsgs(){try{const r=await api("/api/messages?session_id="+currentSid);const arr=await r.json();msgs.innerHTML="";if(!arr.length){msgs.innerHTML='<div class="empty">跟它说说话吧~</div>';}arr.forEach(m=>bubble(m.author,m.content,fmtTime(m.created_at),m.image));scrollHard();}catch(e){}}
+function openDrawer(){$("#drawer").style.display="block";loadSessions();}
+function closeDrawer(){$("#drawer").style.display="none";}
+async function loadSessions(){try{const r=await api("/api/sessions");const arr=await r.json();
+  $("#sessList").innerHTML=arr.map(s=>{
+    const on=s.id===currentSid;
+    const sub=s.last_at?fmtTime(s.last_at):"还没聊过";
+    return `<div class="card" style="margin-bottom:8px;${on?'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="flex:1;min-width:0" onclick="switchSession(${s.id},'${esc(s.name).replace(/'/g,"")}')">
+          <div style="font-size:15px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name)}</div>
+          <div style="font-size:11px;color:var(--soft)">${sub} · ${s.n||0}条</div>
+        </div>
+        <span onclick="renameSession(${s.id},'${esc(s.name).replace(/'/g,"")}')" style="color:var(--soft);padding:4px 6px">✏️</span>
+        ${s.id===1?'':`<span onclick="delSession(${s.id})" style="color:var(--soft);padding:4px 6px">🗑</span>`}
+      </div></div>`;
+  }).join("");
+}catch(e){}}
+function switchSession(id,name){setSid(id);$("#hdrTitle").innerHTML=id===1?"AI&nbsp;助手":esc(name);closeDrawer();loadMsgs();}
+async function newSession(){const r=await api("/api/sessions",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:"新对话"})});const d=await r.json();switchSession(d.id,d.name);}
+async function renameSession(id,old){const name=prompt("给这个对话起个名",old);if(!name)return;await api("/api/sessions/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,name})});if(id===currentSid)$("#hdrTitle").textContent=name;loadSessions();}
+async function delSession(id){if(!confirm("删掉这个对话和里面的消息？"))return;await api("/api/sessions/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});if(id===currentSid)switchSession(1,"AI 助手");loadSessions();}
 
 async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";
-  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img})});
+  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,session_id:currentSid})});
   const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
   while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.think){b.classList.remove("typing");if(!b._th){const d=document.createElement("details");d.style.cssText="margin-bottom:6px;font-size:12.5px;color:var(--soft)";d.innerHTML='<summary style="cursor:pointer">💭 想了想…</summary>';const p=document.createElement("div");p.style.cssText="white-space:pre-wrap;margin-top:4px";d.appendChild(p);b.prepend(d);b._th=p;}b._th.textContent+=e.think;scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");b._tx.textContent=acc;scroll();}}catch(_){}}}
   b.classList.remove("typing");if(!acc)b._tx.textContent="（没有回应，再试一次~）";else setBubbleTime(b,nowHM());}
@@ -405,7 +448,21 @@ async function testPush(){
   }catch(e){h.innerHTML="测试出错:"+e.message;}
 }
 
-function boot(){loadMsgs(); if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{});}}
+// ---- 自定义壁纸（存 localStorage，玻璃透过它显得更有质感）----
+function applyWallpaper(url){
+  if(url){document.body.style.backgroundImage=`linear-gradient(rgba(255,255,255,.15),rgba(255,255,255,.15)),url("${url}")`;
+    document.body.style.backgroundSize="cover";document.body.style.backgroundPosition="center";document.body.style.backgroundAttachment="fixed";}
+  else{document.body.style.backgroundImage="";}
+}
+async function onPickWallpaper(input){const f=input.files&&input.files[0];input.value="";if(!f)return;
+  try{const fd=new FormData();fd.append("file",f);const r=await api("/api/upload",{method:"POST",body:fd});const d=await r.json();
+    if(d.url){try{localStorage.setItem("wallpaper",d.url);}catch(_){}applyWallpaper(d.url);}
+  }catch(e){alert("壁纸设置失败~");}}
+function clearWallpaper(){try{localStorage.removeItem("wallpaper");}catch(_){}applyWallpaper("");}
+applyWallpaper((()=>{try{return localStorage.getItem("wallpaper")||"";}catch(_){return "";}})());
+function boot(){
+  if(currentSid!==1){api("/api/sessions").then(r=>r.json()).then(a=>{const s=a.find(x=>x.id===currentSid);if(s)$("#hdrTitle").textContent=s.name;else setSid(1);}).catch(()=>{});}
+  loadMsgs(); if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{});}}
 boot();
 </script>
 </body>
