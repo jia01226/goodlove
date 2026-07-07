@@ -25,7 +25,7 @@
       "emoji": "📋",
       "role": "产品",
       "persona": "personas/知言.md",
-      "model": "",
+      "model": "gpt-5.5",
       "api_base": "",
       "api_key_env": ""
     }
