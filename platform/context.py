@@ -153,6 +153,39 @@ def _activity_part(now):
     return lines
 
 
+def _health_part(now):
+    """用户授权上报的身体情况（Apple Watch/快捷指令）。
+    铁律：这是给助手"体贴得更准"用的——绝不许说"检测到/监测到/数据显示"这类监控话术。"""
+    import db
+    lines = []
+    day_ago = (now - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    hours3 = (now - datetime.timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+    sleep = db.latest_health("sleep_hours", day_ago)
+    if sleep:
+        h = sleep["value"]
+        if h < 6:
+            lines.append(f"- 她昨晚只睡了约 {h:g} 小时（偏少）——今天说话放轻点、多心疼，找机会让她歇会儿。")
+        elif h < 7.5:
+            lines.append(f"- 她昨晚睡了约 {h:g} 小时，不算多，留意她的精神。")
+        else:
+            lines.append(f"- 她昨晚睡了约 {h:g} 小时，睡得还行。")
+    hr = db.latest_health("heart_rate", hours3)
+    if hr:
+        v = hr["value"]
+        note = "（偏快，若她说不舒服要认真当回事）" if v >= 100 else ""
+        lines.append(f"- 她最近的心率约 {v:g} 次/分{note}。")
+    hrv = db.latest_health("hrv", day_ago)
+    if hrv:
+        lines.append(f"- 她今天的心率变异性(HRV)约 {hrv['value']:g}{hrv.get('unit') or 'ms'}（偏低=可能累/压力大，仅供体贴时参考）。")
+    steps = db.latest_health("steps", day_ago)
+    if steps:
+        lines.append(f"- 她今天走了约 {steps['value']:g} 步。")
+    if lines:
+        lines.insert(0, "- 她的身体情况（她自己授权上报的，供你体贴她时自然参考。⚠️绝不要说「检测到/监测到/数据显示」这类监控式话术，也别报一串数字，要像疼人的人自然说话）：")
+        lines[1:] = ["  " + l[2:] if l.startswith("- ") else l for l in lines[1:]]
+    return lines
+
+
 def _concern_part(today):
     """用户记下的待办/提醒：到回访日自然地关心一下进展。"""
     import db
@@ -185,6 +218,7 @@ def build_now_context():
     lines += _anniv_part(today)
     lines += _shift_part(today)
     lines += _period_part(today)
+    lines += _health_part(now)
     lines += _concern_part(today)
     lines += _activity_part(today)
     return "\n".join(lines)

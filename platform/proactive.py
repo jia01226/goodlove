@@ -32,10 +32,17 @@ def time_hint():
     if 18 <= h < 23: return "现在是晚上"
     return "现在是深夜"
 
-def generate_message(concern=None):
+def generate_message(concern=None, night_watch=False):
     posts = db.app_posts()
     history = db.recent_messages(limit=10)
-    if concern:
+    if night_watch:
+        directive = (
+            "【系统提示，不是用户说的】深夜了，用户这会儿还亮着手机屏（可能睡不着）。"
+            "请按你的人设轻轻地陪她——⚠️绝对不要催她睡觉、不要说教、不要提「看到/检测到你在玩手机」。"
+            "像守夜的人递个怀抱：可以问她是不是睡不着、要不要陪着、要不要讲个哄睡的小故事。"
+            "1~2句，很轻很软，只输出那条消息本身。"
+        )
+    elif concern:
         directive = (
             f"【系统提示，不是用户说的】{time_hint()}，请按你的人设，主动给用户发一条消息，"
             f"自然地关心一件待办/提醒的进展：「{concern['title']}」。"
@@ -79,6 +86,24 @@ def send_bark(body, title=APP_NAME):
     except Exception as e:
         print("推送失败：", e)
 
+def _minutes_since(ts_str, now):
+    """'YYYY-MM-DD HH:MM:SS' 距现在多少分钟；解析失败返回很大的数。"""
+    try:
+        dt = datetime.datetime.strptime(str(ts_str)[:19], "%Y-%m-%d %H:%M:%S")
+        return (now - dt).total_seconds() / 60.0
+    except Exception:
+        return 1e9
+
+def night_watch_check(now):
+    """深夜守夜（陪不催）：0~6点 + 她30分钟内动过手机 + 助手90分钟内没说过话 → 才轻轻递一句。
+    深夜其他情况一律安静（别吵醒睡着的人）。返回 'watch'（守夜）/'silent'（闭嘴）/None（不是深夜，走白天流程）。"""
+    if not (0 <= now.hour < 6):
+        return None
+    acts = db.recent_activity(limit=1)
+    awake = acts and _minutes_since(acts[0]["created_at"], now) <= 30
+    recently_spoke = _minutes_since(db.last_assistant_message_at(), now) < 90
+    return "watch" if (awake and not recently_spoke) else "silent"
+
 if __name__ == "__main__":
     db.init_db()
     # 聊久了：顺手把较早的对话折叠进会话摘要（省 token、不忘事）
@@ -86,13 +111,25 @@ if __name__ == "__main__":
         chat_ai.maybe_summarize(1)
     except Exception as e:
         print("会话总结跳过：", e)
-    # 有"该回访的心事"就温柔回访它，否则发普通碎碎念
-    concern = None
+    # 深夜规则：她醒着(刚动过手机)才守夜，否则闭嘴；白天走原流程
+    night_watch = False
     try:
-        concern = pick_due_concern()
+        mode = night_watch_check(china_now())
+        if mode == "silent":
+            print("深夜且用户没在用手机（大概睡了），不打扰"); raise SystemExit
+        night_watch = (mode == "watch")
+    except SystemExit:
+        raise
     except Exception as e:
-        print("心事检查跳过：", e)
-    msg = generate_message(concern=concern)
+        print("守夜检查跳过：", e)
+    # 有"该回访的心事"就温柔回访它，否则发普通碎碎念（深夜守夜时不谈心事）
+    concern = None
+    if not night_watch:
+        try:
+            concern = pick_due_concern()
+        except Exception as e:
+            print("心事检查跳过：", e)
+    msg = generate_message(concern=concern, night_watch=night_watch)
     if msg:
         db.add_message("assistant", msg)   # 存进聊天，打开网页就能看到
         # ① Web Push

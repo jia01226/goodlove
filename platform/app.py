@@ -174,6 +174,32 @@ def api_track():
 @guard
 def api_activity(): return jsonify(db.recent_activity(limit=50))
 
+# ---- 健康数据（Apple Watch/快捷指令上报；主权在用户：装哪条指令才有哪类数据）----
+@app.route("/api/health", methods=["POST", "GET"])
+def api_health_report():
+    d = request.get_json(silent=True) or request.form or {}
+    metric = (d.get("metric") or request.args.get("metric") or "").strip()
+    value = d.get("value") or request.args.get("value")
+    token = (d.get("token") or request.args.get("token") or "").strip()
+    need = os.environ.get("TRACK_TOKEN", "").strip() or PASSCODE
+    if need and token != need:
+        return jsonify({"error": "bad token"}), 403
+    if not metric or value is None:
+        # GET 且没带参数时当查看用（需登录态）
+        if request.method == "GET" and not metric:
+            if PASSCODE and not session.get("ok"):
+                return jsonify({"error": "need_passcode"}), 401
+            return jsonify(db.recent_health(limit=50))
+        return jsonify({"error": "need metric+value"}), 400
+    try:
+        value = float(value)
+    except Exception:
+        return jsonify({"error": "value must be number"}), 400
+    hid = db.add_health(metric, value,
+                        (d.get("unit") or request.args.get("unit") or "").strip(),
+                        (d.get("detail") or request.args.get("detail") or "").strip())
+    return jsonify({"ok": True, "id": hid})
+
 # ---- 纪念日 / 姨妈 / 排班（日常）----
 @app.get("/api/anniversaries")
 @guard

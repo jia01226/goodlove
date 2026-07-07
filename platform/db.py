@@ -114,6 +114,17 @@ CREATE TABLE IF NOT EXISTS diary_comments (
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
+-- 健康数据（Apple Watch/快捷指令上报：睡眠/心率/HRV/步数…）
+-- 主权在用户：她装哪条快捷指令，才有哪类数据；不装就是空表，一切照常。
+CREATE TABLE IF NOT EXISTS health (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    metric TEXT NOT NULL,          -- sleep_hours / heart_rate / hrv / steps …
+    value REAL NOT NULL,
+    unit TEXT DEFAULT '',
+    detail TEXT DEFAULT '',
+    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
+
 -- 心事引擎：助手替用户记挂还没了结的事（拆所/体检/还债…），到点主动回访
 CREATE TABLE IF NOT EXISTS concerns (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -345,6 +356,38 @@ def recent_activity(limit=20):
                         (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+# ---- 健康数据 ----
+def add_health(metric, value, unit="", detail=""):
+    conn = get_db()
+    cur = conn.execute("INSERT INTO health (metric,value,unit,detail) VALUES (?,?,?,?)",
+                       (metric, value, unit, detail))
+    conn.commit(); hid = cur.lastrowid; conn.close()
+    return hid
+
+def recent_health(limit=50):
+    conn = get_db()
+    rows = conn.execute("SELECT id,metric,value,unit,detail,created_at FROM health "
+                        "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def latest_health(metric, since):
+    """某指标在 since（'YYYY-MM-DD HH:MM:SS'）之后最新的一条；没有返回 None。"""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT metric,value,unit,detail,created_at FROM health "
+        "WHERE metric=? AND created_at>=? ORDER BY id DESC LIMIT 1", (metric, since)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def last_assistant_message_at(session_id=1):
+    """助手最后一次说话的时间（含主动消息），给夜间守夜防轰炸用。"""
+    conn = get_db()
+    row = conn.execute("SELECT created_at FROM chat_messages WHERE session_id=? AND author='assistant' "
+                       "ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+    conn.close()
+    return str(row["created_at"]) if row else ""
 
 # ---- 心事引擎 ----
 def all_concerns(status=None):
