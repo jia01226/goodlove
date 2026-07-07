@@ -114,6 +114,14 @@ CREATE TABLE IF NOT EXISTS diary_comments (
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
+-- 心情记录（用户自己点的：今天什么心情，可带一句话）
+CREATE TABLE IF NOT EXISTS moods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mood TEXT NOT NULL,            -- 开心/平静/恋爱/低落/烦…
+    note TEXT DEFAULT '',
+    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
+
 -- 健康数据（Apple Watch/快捷指令上报：睡眠/心率/HRV/步数…）
 -- 主权在用户：她装哪条快捷指令，才有哪类数据；不装就是空表，一切照常。
 CREATE TABLE IF NOT EXISTS health (
@@ -436,6 +444,20 @@ def delete_concern(cid):
     conn = get_db()
     conn.execute("DELETE FROM concerns WHERE id=?", (cid,))
     conn.commit(); conn.close()
+
+# ---- 心情记录 ----
+def add_mood(mood, note=""):
+    conn = get_db()
+    cur = conn.execute("INSERT INTO moods (mood,note) VALUES (?,?)", (mood, note))
+    conn.commit(); mid = cur.lastrowid; conn.close()
+    return mid
+
+def recent_moods(limit=14):
+    conn = get_db()
+    rows = conn.execute("SELECT id,mood,note,created_at FROM moods ORDER BY id DESC LIMIT ?",
+                        (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 def referenced_images():
     """聊天里用到过的图片/文件名集合（uploads 里不在这份名单的=没人引用的废图）。"""

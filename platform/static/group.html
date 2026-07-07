@@ -99,8 +99,10 @@ let MEMBERS=[];
 async function api(path,opt){const r=await fetch(path,opt);if(r.status===401){$("#gate").style.display="flex";throw 0;}return r;}
 async function login(){const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({passcode:$("#pc").value})});if(r.ok){$("#gate").style.display="none";boot();}else alert("口令不对呀~");}
 function scroll(){msgs.scrollTop=msgs.scrollHeight;}
+function scrollHard(){scroll();requestAnimationFrame(scroll);setTimeout(scroll,150);setTimeout(scroll,500);}
 function emojiOf(name){const m=MEMBERS.find(x=>x.name===name);return m?m.emoji:"🤖";}
-function fmt(s){const m=String(s||"").match(/[ T](\d{2}:\d{2})/);return m?m[1]:"";}
+function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function fmt(s){const m=String(s||"").match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2})/);if(!m)return"";return (m[1]+"-"+m[2]+"-"+m[3]===todayStr()?"":(+m[2])+"/"+(+m[3])+" ")+m[4];}
 
 function isImg(u){return /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(u||"");}
 function bubble(author,text,time,image){
@@ -112,7 +114,7 @@ function bubble(author,text,time,image){
     <div class="bubble"></div></div>`;
   const bb=w.querySelector(".bubble");
   if(image){
-    if(isImg(image)){const im=document.createElement("img");im.src=image;im.loading="lazy";
+    if(isImg(image)){const im=document.createElement("img");im.onload=scroll;im.src=image;
       im.style.cssText="max-width:200px;max-height:240px;border-radius:10px;display:block;cursor:pointer";
       im.onclick=()=>window.open(image);bb.appendChild(im);}
     else{const a=document.createElement("a");a.href=image;a.target="_blank";
@@ -143,7 +145,7 @@ async function boot(){
     const h=await(await api("/api/group/messages")).json();
     msgs.innerHTML="";
     if(!h.length){msgs.innerHTML=`<div class="empty">群建好了,还没人说话——<br/>@一个人开个头吧 👥</div>`;}
-    for(const m of h)bubble(m.author,m.content,fmt(m.created_at),m.image);
+    for(const m of h)bubble(m.author,m.content,fmt(m.created_at),m.image);scrollHard();
   }catch(e){}
 }
 function atTa(n){const i=$("#input");if(!i.value.includes("@"+n))i.value="@"+n+" "+i.value;i.focus();}
