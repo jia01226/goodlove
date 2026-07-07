@@ -293,7 +293,7 @@ async function addPost(){const c=$("#pcontent").value.trim();if(!c)return;await 
 async function loadUsage(){try{const r=await api("/api/usage");const u=await r.json();$("#usage").textContent=`累计对话：${u.n} 次\n输入 tokens：${u.i}\n输出 tokens：${u.o}\n粗估花费：$${(u.c||0).toFixed(4)}`;}catch(e){}}
 function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{const v=b.dataset.v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===v));document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));$("#footer").style.display=v==="chatView"?"block":"none";if(v==="memView")loadPosts();if(v==="dashView")loadUsage();if(v==="lifeView")loadLife();});
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{const v=b.dataset.v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===v));document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));$("#footer").style.display=v==="chatView"?"block":"none";if(v==="chatView")scrollHard();if(v==="memView")loadPosts();if(v==="dashView")loadUsage();if(v==="lifeView")loadLife();});
 
 // ---- 日常：纪念日 / 姨妈 / 排班 ----
 function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
