@@ -211,7 +211,8 @@ def _stream_http(url, headers, payload, usage):
                     continue
                 if ev.get("usage"):
                     usage.update(ev["usage"])   # 就地更新，带回给 stream_completion
-                ch = ev.get("choices", [{}])[0]
+                chs = ev.get("choices") or []
+                ch = chs[0] if chs else {}      # 有些家收尾发空 choices（纯用量块），别被它绊倒
                 piece = (ch.get("delta") or {}).get("content") or ""
                 if piece:
                     yield piece
