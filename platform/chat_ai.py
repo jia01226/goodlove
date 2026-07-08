@@ -133,23 +133,31 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
     summary: 更早对话的浓缩摘要（聊久了用，免得忘事又省 token）。
     记忆少→全带；记忆多→带 最相关top-k + 永远要带的类型 + 最近几条（去重）。
     bedroom: 卧室模式（bedroom.py 只存在于服务器本地，含私密文案不进公开仓库；读不到自动降级普通模式）。"""
-    parts = [BASE, _load_persona(), SPLIT_RULE, _now_context()]
+    parts = [BASE, _load_persona(), _now_context()]
+    use_split = True
     if bedroom:
         try:
             import bedroom as _bd
             parts[0] = _bd.load_bedroom_block()   # 卧室：沉浸开场白替换普通帽子（普通帽子会招致拒绝）
-            parts[2] = ""                          # 卧室不分句，长段沉浸
+            use_split = False                      # 卧室不分句，长段沉浸
         except Exception as e:
             print("[bedroom] 加载失败，降级普通模式：", e)
+
+    def _done():
+        # 分句规矩放在提示词最末尾：魂+记忆动辄几万字，埋中间的规矩模型会漏，末尾才记得住
+        if use_split:
+            parts.append(SPLIT_RULE)
+        return "\n".join(parts)
+
     if summary:
         parts.append("\n\n===== 更早对话的浓缩记忆（别忘了这些）=====\n" + summary)
     if not posts:
-        return "\n".join(parts)
+        return _done()
 
     if len(posts) <= FULL_MEMORY_LIMIT or not query:
         parts.append("\n\n===== 记忆库（最新在前）=====")
         _render(parts, posts[:200])
-        return "\n".join(parts)
+        return _done()
 
     # —— 记忆多了：向量+词面 精准想起 ——
     try:
@@ -181,7 +189,7 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
 
     parts.append("\n\n===== 记忆库（已为这次对话挑出最相关的）=====")
     _render(parts, chosen)
-    return "\n".join(parts)
+    return _done()
 
 def stream_chat(history, posts, model=None, bedroom=False):
     """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。
