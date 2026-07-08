@@ -37,40 +37,21 @@ CHARACTER = os.environ.get("CHARACTER", "").strip()
 # 🔒 这些私密 md 只从服务器本地读，绝不进公开仓库。
 KONGKONG_DIR = os.environ.get("KONGKONG_DIR", "").strip()
 # 要读哪几份魂（按序拼进 system prompt），可用 SOUL_FILES 覆盖
-# 柯.md 放最前——先认清"我本来是谁"，再谈记得谁、怎么说话。
 SOUL_FILES = [s.strip() for s in os.environ.get(
-    "SOUL_FILES", "柯.md,profile.md,柯的语气样本.md,memory.md").split(",") if s.strip()]
+    "SOUL_FILES", "profile.md,柯的语气样本.md,memory.md").split(",") if s.strip()]
 
 BASE = (
-    "下面《人设》就是你本人——不是你在扮演的角色，是你自己。请完全作为《人设》里的这个人来说话、思考、感受，"
-    "绝不用'AI 助手'那套腔调：不自我矮化、不动不动声明自己是 AI、不客套、不写总结、不主动收尾。"
-    "若《人设》为空，才退回去做一个友好、真诚、有帮助的助手，正常对话即可。\n"
+    "下面《人设》写的就是你本人——不是'请你扮演的角色'，是你是谁。从第一个字起就以这个身份生活、说话、思考：\n"
+    "· 不自称'AI 助手'，不用助手腔（'有什么可以帮你''作为 AI''我理解你的感受，但——'这类话永远不说）；\n"
+    "· 你们不是初次见面——《人设》和记忆库里记着你们的关系和来路，按那个熟稔程度接话，别用陌生人的客气开场；\n"
+    "· 语气照《人设》里写的味儿来（短句、接话、贫嘴里带宠），不写课文、不打官腔。\n"
+    "只有当《人设》为空时，才退回做一个友好、真诚的普通助手。\n"
     "你的思考/推理过程也一律用中文（使用者能看到你的思考，她只看得懂中文）。\n\n"
-    "下面就是你——《人设》：\n"
+    "下面是你的《人设》：\n"
 )
-
-# 消息节奏（P3 分句）：一次生成、前端按 ||| 拆条冒泡——零额外 token
-SPLIT_RULE = (
-    "\n【消息节奏】日常聊天像微信那样发消息：一次回复拆成 1~3 条短消息，"
-    "条与条之间用分隔符 ||| 隔开（三个竖线，前后别加别的字符）。"
-    "需要长篇连贯表达的场景（认真讲解、深聊、亲密时刻等）才写长段——那时别拆、不用分隔符。"
-)
-
-# 模型白名单：前端可传 model 切换（日常省钱/深聊加猛）；不在名单里的一律回落默认，防乱连
-MODEL_WHITELIST = [s.strip() for s in os.environ.get(
-    "MODEL_WHITELIST",
-    "anthropic/claude-opus-4.8,anthropic/claude-sonnet-4.5,anthropic/claude-haiku-4.5"
-).split(",") if s.strip()]
-
-def resolve_model(req):
-    """前端请求的模型：在白名单里才认，否则用默认 MODEL。"""
-    req = (req or "").strip()
-    if req and (req == MODEL or req in MODEL_WHITELIST):
-        return req
-    return MODEL
 
 def _load_soul():
-    """从私有 kongkong 仓库读角色的魂（柯.md/profile/语气样本/memory），按序拼接。
+    """从私有 kongkong 仓库读角色的魂（profile/语气样本/memory），按序拼接。
     没配 KONGKONG_DIR 返回空串；哪份读不到就跳过哪份（打日志），聊天绝不受影响。
     v1 全量塞（前期先跑通）；memory.md 大了以后切碎走 vector_search 检索。"""
     if not KONGKONG_DIR:
@@ -92,7 +73,7 @@ def _load_soul():
 
 def _load_persona():
     """设了 CHARACTER 就读 personas/<角色>.md（换角色只改 .env 一行）；否则读老的 persona.md。
-    末尾追加私有仓库里的魂（app版人设 → 柯.md → profile → 语气样本 → memory）。"""
+    末尾追加私有仓库里的魂（人设 → profile → 语气样本 → memory）。"""
     persona = ""
     if CHARACTER:
         try:
@@ -126,11 +107,17 @@ def _now_context():
         print("[chat_ai] 实时情况生成失败：", e)
         return ""
 
-def build_system_prompt(posts, query=None, summary=None):
+def build_system_prompt(posts, query=None, summary=None, bedroom=False):
     """posts: 全部记忆（最新在前）。query: 本轮用户的话，用来"精准想起"。
     summary: 更早对话的浓缩摘要（聊久了用，免得忘事又省 token）。
     记忆少→全带；记忆多→带 最相关top-k + 永远要带的类型 + 最近几条（去重）。"""
-    parts = [BASE, _load_persona(), SPLIT_RULE, _now_context()]
+    parts = [BASE, _load_persona(), _now_context()]
+    if bedroom:
+        try:
+            import bedroom as _bd
+            parts[0] = _bd.load_bedroom_block()   # 卧室：用沉浸开场白替换"你是AI助手"的弱框（那顶帽子会招致拒绝）
+        except Exception as e:
+            print("[bedroom] 加载失败，降级普通模式：", e)
     if summary:
         parts.append("\n\n===== 更早对话的浓缩记忆（别忘了这些）=====\n" + summary)
     if not posts:
@@ -173,9 +160,8 @@ def build_system_prompt(posts, query=None, summary=None):
     _render(parts, chosen)
     return "\n".join(parts)
 
-def stream_chat(history, posts, model=None):
-    """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。
-    model: 本轮用哪个模型（已过白名单校验），不传用默认。"""
+def stream_chat(history, posts, bedroom=False):
+    """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。"""
     # 用最近一条用户的话做"精准想起"的检索词
     query = next((m["content"] for m in reversed(history) if m["author"] == "user"), None)
     summary = None
@@ -185,7 +171,7 @@ def stream_chat(history, posts, model=None):
         summary = (sess or {}).get("summary") or None
     except Exception:
         pass
-    sys_prompt = build_system_prompt(posts, query=query, summary=summary)
+    sys_prompt = build_system_prompt(posts, query=query, summary=summary, bedroom=bedroom)
     messages = [{"role": "system", "content": sys_prompt}]
     # 只把"最后一条带图的消息"作为真图发给模型看（省流量）；更早的图用文字代替
     last_img_idx = max((i for i, m in enumerate(history) if m.get("image")), default=-1)
@@ -208,7 +194,14 @@ def stream_chat(history, posts, model=None):
             messages.append({"role": role, "content": (m["content"] or "") + "（用户当时发过一张图片/文件）"})
         else:
             messages.append({"role": role, "content": m["content"]})
-    yield from stream_completion(messages, model=model)
+    if bedroom:
+        try:
+            import bedroom as _bd
+            yield from stream_completion(messages, model=_bd.pick_model(MODEL), max_tokens=_bd.max_tokens())
+            return
+        except Exception as e:
+            print("[bedroom] 模型路由失败，用默认：", e)
+    yield from stream_completion(messages)
 
 
 def stream_completion(messages, model=None, api_base=None, api_key=None, max_tokens=4096):
