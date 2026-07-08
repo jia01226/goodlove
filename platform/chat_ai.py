@@ -133,7 +133,7 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
     summary: 更早对话的浓缩摘要（聊久了用，免得忘事又省 token）。
     记忆少→全带；记忆多→带 最相关top-k + 永远要带的类型 + 最近几条（去重）。
     bedroom: 卧室模式（bedroom.py 只存在于服务器本地，含私密文案不进公开仓库；读不到自动降级普通模式）。"""
-    parts = [BASE, _load_persona(), _now_context()]
+    parts = [BASE, _load_persona()]
     use_split = True
     if bedroom:
         try:
@@ -144,7 +144,9 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
             print("[bedroom] 加载失败，降级普通模式：", e)
 
     def _done():
-        # 分句规矩放在提示词最末尾：魂+记忆动辄几万字，埋中间的规矩模型会漏，末尾才记得住
+        # 当下情境(时间/天气/心事/行踪)和分句规矩放提示词最末尾：
+        # 魂+记忆动辄几万字，埋中间会被漏读；且每轮都变的东西放末尾，为将来的 prompt 缓存让路
+        parts.append(_now_context())
         if use_split:
             parts.append(SPLIT_RULE)
         return "\n".join(parts)
