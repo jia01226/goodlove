@@ -236,6 +236,7 @@
   </div>
   <div class="composer">
     <button class="send" style="background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);color:var(--gold-deep);font-size:24px;line-height:1" onclick="document.getElementById('file').click()" title="拍照/相册/文件">＋</button>
+    <button class="send" id="bdBtn" style="background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);font-size:18px;line-height:1;opacity:.45" onclick="toggleBd()" title="">🌙</button>
     <textarea id="input" rows="1" placeholder="说点什么…"></textarea>
     <button class="send" onclick="send()">➤</button>
   </div>
@@ -338,12 +339,17 @@ async function newSession(){const r=await api("/api/sessions",{method:"POST",hea
 async function renameSession(id,old){const name=prompt("给这个对话起个名",old);if(!name)return;await api("/api/sessions/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,name})});if(id===currentSid)$("#hdrTitle").textContent=name;loadSessions();}
 async function delSession(id){if(!confirm("删掉这个对话和里面的消息？"))return;await api("/api/sessions/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});if(id===currentSid)switchSession(1,"AI 助手");loadSessions();}
 
+// 卧室模式开关（🌙→🔥）：状态记在本机，随每条消息发给后端
+let BD=localStorage.getItem("bd")==="1";
+function updateBd(){const b=document.getElementById("bdBtn");if(b){b.style.opacity=BD?"1":".45";b.textContent=BD?"🔥":"🌙";}}
+function toggleBd(){BD=!BD;localStorage.setItem("bd",BD?"1":"0");updateBd();}
+updateBd();
 async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];
   // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发
   function paint(){const parts=acc.split("|||");
     while(bubbles.length<parts.length)bubbles.push(bubble("assistant",""));
     parts.forEach((p,i)=>{let s=p;if(i===parts.length-1)s=s.replace(/\|+\s*$/,"");bubbles[i]._tx.textContent=s.trim();});scroll();}
-  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,session_id:currentSid})});
+  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,session_id:currentSid,bedroom:BD})});
   const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
   while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.think){b.classList.remove("typing");if(!b._th){const d=document.createElement("details");d.style.cssText="margin-bottom:6px;font-size:12.5px;color:var(--soft)";d.innerHTML='<summary style="cursor:pointer">💭 想了想…</summary>';const p=document.createElement("div");p.style.cssText="white-space:pre-wrap;margin-top:4px";d.appendChild(p);b.prepend(d);b._th=p;}b._th.textContent+=e.think;scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}}catch(_){}}}
   b.classList.remove("typing");

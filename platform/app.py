@@ -71,6 +71,7 @@ def api_chat():
     if not text and not image:
         return jsonify({"error": "empty"}), 400
     sid = _chat_sid(data.get("session_id"))
+    bedroom = bool(data.get("bedroom"))                # 卧室模式（bedroom.py 只在服务器本地）
     model = chat_ai.resolve_model(data.get("model"))   # 前端可选模型，白名单外回落默认
     db.add_message("user", text, session_id=sid, image=image, msg_type=("image" if image else "text"))
     history = db.recent_messages(session_id=sid)
@@ -78,7 +79,7 @@ def api_chat():
 
     def gen():
         acc = ""
-        for piece in chat_ai.stream_chat(history, posts, model=model):
+        for piece in chat_ai.stream_chat(history, posts, model=model, bedroom=bedroom):
             if isinstance(piece, tuple):
                 if piece[0] == "__usage__":
                     usage = piece[1] or {}
