@@ -49,6 +49,26 @@ BASE = (
     "下面就是你——《人设》：\n"
 )
 
+# 消息节奏（P3 分句）：一次生成、前端按 ||| 拆条冒泡——零额外 token
+SPLIT_RULE = (
+    "\n【消息节奏】日常聊天像微信那样发消息：一次回复拆成 1~3 条短消息，"
+    "条与条之间用分隔符 ||| 隔开（三个竖线，前后别加别的字符）。"
+    "需要长篇连贯表达的场景（认真讲解、深聊、亲密时刻等）才写长段——那时别拆、不用分隔符。"
+)
+
+# 模型白名单：前端可传 model 切换（日常省钱/深聊加猛）；不在名单里的一律回落默认，防乱连
+MODEL_WHITELIST = [s.strip() for s in os.environ.get(
+    "MODEL_WHITELIST",
+    "anthropic/claude-opus-4.8,anthropic/claude-sonnet-4.5,anthropic/claude-haiku-4.5"
+).split(",") if s.strip()]
+
+def resolve_model(req):
+    """前端请求的模型：在白名单里才认，否则用默认 MODEL。"""
+    req = (req or "").strip()
+    if req and (req == MODEL or req in MODEL_WHITELIST):
+        return req
+    return MODEL
+
 def _load_soul():
     """从私有 kongkong 仓库读角色的魂（柯.md/profile/语气样本/memory），按序拼接。
     没配 KONGKONG_DIR 返回空串；哪份读不到就跳过哪份（打日志），聊天绝不受影响。
@@ -110,7 +130,7 @@ def build_system_prompt(posts, query=None, summary=None):
     """posts: 全部记忆（最新在前）。query: 本轮用户的话，用来"精准想起"。
     summary: 更早对话的浓缩摘要（聊久了用，免得忘事又省 token）。
     记忆少→全带；记忆多→带 最相关top-k + 永远要带的类型 + 最近几条（去重）。"""
-    parts = [BASE, _load_persona(), _now_context()]
+    parts = [BASE, _load_persona(), SPLIT_RULE, _now_context()]
     if summary:
         parts.append("\n\n===== 更早对话的浓缩记忆（别忘了这些）=====\n" + summary)
     if not posts:
@@ -153,8 +173,9 @@ def build_system_prompt(posts, query=None, summary=None):
     _render(parts, chosen)
     return "\n".join(parts)
 
-def stream_chat(history, posts):
-    """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。"""
+def stream_chat(history, posts, model=None):
+    """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。
+    model: 本轮用哪个模型（已过白名单校验），不传用默认。"""
     # 用最近一条用户的话做"精准想起"的检索词
     query = next((m["content"] for m in reversed(history) if m["author"] == "user"), None)
     summary = None
@@ -187,7 +208,7 @@ def stream_chat(history, posts):
             messages.append({"role": role, "content": (m["content"] or "") + "（用户当时发过一张图片/文件）"})
         else:
             messages.append({"role": role, "content": m["content"]})
-    yield from stream_completion(messages)
+    yield from stream_completion(messages, model=model)
 
 
 def stream_completion(messages, model=None, api_base=None, api_key=None, max_tokens=4096):

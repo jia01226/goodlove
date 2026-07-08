@@ -71,18 +71,19 @@ def api_chat():
     if not text and not image:
         return jsonify({"error": "empty"}), 400
     sid = _chat_sid(data.get("session_id"))
+    model = chat_ai.resolve_model(data.get("model"))   # 前端可选模型，白名单外回落默认
     db.add_message("user", text, session_id=sid, image=image, msg_type=("image" if image else "text"))
     history = db.recent_messages(session_id=sid)
     posts = db.app_posts()   # app 里的助手看 both+app（含只在 app 的悄悄话）
 
     def gen():
         acc = ""
-        for piece in chat_ai.stream_chat(history, posts):
+        for piece in chat_ai.stream_chat(history, posts, model=model):
             if isinstance(piece, tuple):
                 if piece[0] == "__usage__":
                     usage = piece[1] or {}
-                    cost, it, ot = chat_ai.estimate_cost(chat_ai.MODEL, usage)
-                    db.log_usage(chat_ai.MODEL, it, ot, cost)
+                    cost, it, ot = chat_ai.estimate_cost(model, usage)
+                    db.log_usage(model, it, ot, cost)
                 elif piece[0] == "__think__":
                     yield ("data: " + json.dumps({"think": piece[1]}, ensure_ascii=False) + "\n\n").encode("utf-8")
                 continue
@@ -94,6 +95,12 @@ def api_chat():
 
     return Response(gen(), content_type="text/event-stream; charset=utf-8",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+@app.get("/api/models")
+@guard
+def api_models():
+    """给前端模型选择器（知言的 UI 调这个）：可选模型（白名单）+ 当前默认。"""
+    return jsonify({"models": chat_ai.MODEL_WHITELIST, "default": chat_ai.MODEL})
 
 # ---- 历史 / 记忆 / 用量 ----
 def _chat_sid(raw):

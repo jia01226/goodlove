@@ -308,7 +308,14 @@ function scrollHard(){scroll();requestAnimationFrame(scroll);setTimeout(scroll,1
 // ---- 会话（多条对话切换）----
 let currentSid=(()=>{try{return +localStorage.getItem("sid")||1;}catch(_){return 1;}})();
 function setSid(id){currentSid=id;try{localStorage.setItem("sid",id);}catch(_){}}
-async function loadMsgs(){try{const r=await api("/api/messages?session_id="+currentSid);const arr=await r.json();msgs.innerHTML="";if(!arr.length){msgs.innerHTML='<div class="empty">跟它说说话吧~</div>';}arr.forEach(m=>bubble(m.author,m.content,fmtTime(m.created_at),m.image));scrollHard();}catch(e){}}
+// 分句显示：助手消息按 ||| 拆成几条泡泡（像微信一句句发）；没分隔符就原样一条
+function splitParts(s){return (s||"").split(/\s*\|\|\|\s*/).map(x=>x.trim()).filter(Boolean);}
+function renderMsg(m){const t=fmtTime(m.created_at);
+  if(m.author==="user")return bubble("user",m.content,t,m.image);
+  const parts=splitParts(m.content);
+  if(parts.length<=1)return bubble(m.author,parts[0]||m.content,t,m.image);
+  parts.forEach((p,i)=>bubble("assistant",p,i===parts.length-1?t:"",i===0?m.image:""));}
+async function loadMsgs(){try{const r=await api("/api/messages?session_id="+currentSid);const arr=await r.json();msgs.innerHTML="";if(!arr.length){msgs.innerHTML='<div class="empty">跟它说说话吧~</div>';}arr.forEach(renderMsg);scrollHard();}catch(e){}}
 function openDrawer(){$("#drawer").style.display="block";loadSessions();}
 function closeDrawer(){$("#drawer").style.display="none";}
 async function loadSessions(){try{const r=await api("/api/sessions");const arr=await r.json();
@@ -331,11 +338,18 @@ async function newSession(){const r=await api("/api/sessions",{method:"POST",hea
 async function renameSession(id,old){const name=prompt("给这个对话起个名",old);if(!name)return;await api("/api/sessions/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,name})});if(id===currentSid)$("#hdrTitle").textContent=name;loadSessions();}
 async function delSession(id){if(!confirm("删掉这个对话和里面的消息？"))return;await api("/api/sessions/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});if(id===currentSid)switchSession(1,"AI 助手");loadSessions();}
 
-async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";
+async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];
+  // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发
+  function paint(){const parts=acc.split("|||");
+    while(bubbles.length<parts.length)bubbles.push(bubble("assistant",""));
+    parts.forEach((p,i)=>{let s=p;if(i===parts.length-1)s=s.replace(/\|+\s*$/,"");bubbles[i]._tx.textContent=s.trim();});scroll();}
   const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,session_id:currentSid})});
   const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
-  while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.think){b.classList.remove("typing");if(!b._th){const d=document.createElement("details");d.style.cssText="margin-bottom:6px;font-size:12.5px;color:var(--soft)";d.innerHTML='<summary style="cursor:pointer">💭 想了想…</summary>';const p=document.createElement("div");p.style.cssText="white-space:pre-wrap;margin-top:4px";d.appendChild(p);b.prepend(d);b._th=p;}b._th.textContent+=e.think;scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");b._tx.textContent=acc;scroll();}}catch(_){}}}
-  b.classList.remove("typing");if(!acc)b._tx.textContent="（没有回应，再试一次~）";else setBubbleTime(b,nowHM());}
+  while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.think){b.classList.remove("typing");if(!b._th){const d=document.createElement("details");d.style.cssText="margin-bottom:6px;font-size:12.5px;color:var(--soft)";d.innerHTML='<summary style="cursor:pointer">💭 想了想…</summary>';const p=document.createElement("div");p.style.cssText="white-space:pre-wrap;margin-top:4px";d.appendChild(p);b.prepend(d);b._th=p;}b._th.textContent+=e.think;scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}}catch(_){}}}
+  b.classList.remove("typing");
+  if(!acc){b._tx.textContent="（没有回应，再试一次~）";return;}
+  while(bubbles.length>1&&!bubbles[bubbles.length-1]._tx.textContent){bubbles.pop().parentElement.remove();}
+  setBubbleTime(bubbles[bubbles.length-1],nowHM());}
 $("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}});
 
 function visBadge(v){return v==="app"?'<span style="color:var(--soft)"> · 🔒只在这里</span>':v==="repo"?'<span style="color:var(--soft)"> · 📄仅仓库</span>':'';}
