@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#FBF8F1" />
+<link rel="apple-touch-icon" href="/static/icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>朋友圈</title>
+<style>
+  /* ===== 主题（暖麻/樱粉/雾蓝），玻璃质感全靠这些变量——与主页同一套皮肤 ===== */
+  :root{
+    --bg1:#FBF8F1;--bg2:#F6EFE2;--blob1:rgba(201,168,106,.32);--blob2:rgba(232,196,160,.35);
+    --ink:#4A4138;--soft:#9C8F7E;--gold:#C9A86A;--gold-deep:#B8924E;
+    --line:rgba(255,255,255,.65);--me:rgba(243,231,207,.78);
+    --glass:rgba(255,255,255,.55);--glass2:rgba(255,255,255,.38);
+    --shadow:0 8px 32px rgba(150,120,70,.14)
+  }
+  html[data-theme="sakura"]{
+    --bg1:#FBF3F5;--bg2:#F7E8ee;--blob1:rgba(224,148,171,.30);--blob2:rgba(244,196,210,.40);
+    --ink:#54424b;--soft:#a8919b;--gold:#D48CA1;--gold-deep:#C2708A;
+    --me:rgba(248,224,232,.82);--shadow:0 8px 32px rgba(196,120,146,.15)
+  }
+  html[data-theme="mist"]{
+    --bg1:#F2F4F9;--bg2:#E9EDF6;--blob1:rgba(140,160,205,.28);--blob2:rgba(180,196,230,.38);
+    --ink:#454b5c;--soft:#8d94a8;--gold:#8FA3CC;--gold-deep:#7189BC;
+    --me:rgba(223,231,246,.85);--shadow:0 8px 32px rgba(110,132,180,.15)
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,"PingFang SC","Segoe UI",sans-serif;color:var(--ink);
+    background:linear-gradient(165deg,var(--bg1),var(--bg2));min-height:100dvh;transition:background .4s}
+  body::before,body::after{content:"";position:fixed;border-radius:50%;filter:blur(70px);z-index:-1;pointer-events:none}
+  body::before{width:46vh;height:46vh;top:-12vh;right:-14vh;background:var(--blob1)}
+  body::after{width:52vh;height:52vh;bottom:-16vh;left:-16vh;background:var(--blob2)}
+  /* ===== 玻璃 header ===== */
+  header{padding:12px;text-align:center;position:sticky;top:0;z-index:5;
+    background:var(--glass);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:18px;letter-spacing:2px;color:var(--gold-deep)}
+  header .back{position:absolute;left:12px;top:50%;transform:translateY(-50%);border:none;background:none;font-size:22px;color:var(--gold-deep)}
+  main{max-width:640px;margin:0 auto;padding:14px 14px calc(30px + env(safe-area-inset-bottom))}
+  /* ===== 玻璃卡片（大圆角、留白充足，跟主页 .card 一致）===== */
+  .card{background:var(--glass);backdrop-filter:blur(16px) saturate(1.5);-webkit-backdrop-filter:blur(16px) saturate(1.5);
+    border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+  textarea{width:100%;resize:none;border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:15px;font-family:inherit;min-height:66px;outline:none;
+    background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:var(--ink)}
+  textarea:focus{border-color:var(--gold)}
+  .row{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .chipbtn{border:1px solid var(--line);background:var(--glass2);border-radius:14px;padding:8px 14px;font-size:14px;font-family:inherit;color:var(--gold-deep);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .btn{margin-left:auto;padding:10px 20px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--gold),var(--gold-deep));color:#fff;font-size:15px;box-shadow:var(--shadow)}
+  .thumbwrap{position:relative;display:inline-block;margin-top:10px}
+  .thumbwrap img{max-width:120px;max-height:120px;border-radius:12px;display:block}
+  .thumbwrap .x{position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;border:none;background:var(--gold-deep);color:#fff;font-size:13px;line-height:22px}
+  /* ===== 一条动态：作者行 / 正文 / 图片 / 评论区（语义化 class，方便以后套皮肤）===== */
+  .moment-card{background:var(--glass);backdrop-filter:blur(16px) saturate(1.5);-webkit-backdrop-filter:blur(16px) saturate(1.5);
+    border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+  .moment-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .moment-avatar{width:34px;height:34px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:17px;flex:0 0 auto}
+  .moment-avatar.ke{background:rgba(140,160,205,.28)}
+  .moment-avatar.user{background:var(--me)}
+  .moment-who{font-size:15px;color:var(--gold-deep);font-weight:600}
+  .moment-time{font-size:11px;color:var(--soft);margin-top:1px}
+  .moment-del{margin-left:auto;border:none;background:none;color:var(--soft);font-size:15px;padding:2px 4px}
+  .moment-body{font-size:15px;line-height:1.7;white-space:pre-wrap;word-break:break-word;margin:2px 0 4px}
+  .moment-img{margin-top:10px}
+  .moment-img img{max-width:100%;max-height:360px;border-radius:14px;display:block;cursor:pointer}
+  .moment-comments{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+  .moment-comments .one{font-size:13.5px;line-height:1.7;color:var(--ink);margin-bottom:6px;display:flex;gap:6px;align-items:flex-start}
+  .moment-comments .one b{color:var(--gold-deep);font-weight:600;flex:0 0 auto}
+  .moment-comments .one .cdel{margin-left:auto;color:var(--soft);font-size:12px;padding:0 4px}
+  .crow{display:flex;gap:8px;margin-top:8px}
+  .crow input{flex:1;border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:14px;font-family:inherit;outline:none;
+    background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:var(--ink)}
+  .crow button{border:none;background:linear-gradient(135deg,var(--gold),var(--gold-deep));color:#fff;border-radius:999px;padding:0 16px;font-size:14px}
+  .empty{text-align:center;color:var(--soft);font-size:14px;margin:50px 0;line-height:2}
+  #gate{position:fixed;inset:0;background:linear-gradient(165deg,var(--bg1),var(--bg2));display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;z-index:9}
+  #gate input{border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:16px;width:min(320px,80vw);text-align:center;margin:14px 0;background:var(--glass);color:var(--ink)}
+  #gate button{border:0;background:linear-gradient(135deg,var(--gold),var(--gold-deep));color:#fff;border-radius:12px;padding:12px 34px;font-size:16px}
+</style>
+</head>
+<body>
+<header>
+  <button class="back" onclick="location.href='/'">‹</button>
+  <h1>朋友圈</h1>
+</header>
+<main>
+  <div class="card">
+    <textarea id="content" placeholder="分享点什么…"></textarea>
+    <div class="thumbwrap" id="thumbWrap" style="display:none"><img id="thumb" /><button class="x" onclick="clearPending()">✕</button></div>
+    <div class="row">
+      <button class="chipbtn" onclick="document.getElementById('file').click()">🖼 图片</button>
+      <button class="btn" onclick="publish()">发布</button>
+    </div>
+    <input id="file" type="file" accept="image/*" style="display:none" onchange="onPickFile(this)" />
+  </div>
+  <div id="list"><div class="empty">还没有动态，发第一条吧~</div></div>
+</main>
+
+<div id="gate">
+  <div style="font-size:34px">📷</div>
+  <input id="pc" type="password" placeholder="访问口令" />
+  <button onclick="login()">进入</button>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+// ---- 主题：跟主页同步（读 localStorage.theme，玻璃质感靠 CSS 变量）----
+(function(){let t="warm";try{t=localStorage.getItem("theme")||"warm";}catch(_){}
+  if(t!=="warm")document.documentElement.setAttribute("data-theme",t);
+  const mc={warm:"#FBF8F1",sakura:"#FBF3F5",mist:"#F2F4F9"};
+  const m=document.querySelector('meta[name="theme-color"]');if(m)m.content=mc[t]||mc.warm;})();
+
+async function api(path,opt){const r=await fetch(path,opt);if(r.status===401){$("#gate").style.display="flex";throw 0;}return r;}
+async function login(){const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({passcode:$("#pc").value})});if(r.ok){$("#gate").style.display="none";load();}else alert("口令不对呀~");}
+
+function esc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function isImg(u){return /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(u||"");}
+function fmtTime(s){const m=String(s||"").match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);if(!m)return"";
+  const d=new Date();const today=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const day=m[1]+"-"+m[2]+"-"+m[3];return (day===today?"":m[2]+"/"+m[3]+" ")+m[4]+":"+m[5];}
+function whoName(a){return a==="ke"?"柯":"我";}
+
+let pending=null;
+async function onPickFile(input){const f=input.files&&input.files[0];input.value="";if(!f)return;
+  try{const fd=new FormData();fd.append("file",f);const r=await api("/api/upload",{method:"POST",body:fd});const d=await r.json();
+    if(d.error){alert("上传失败，再试一次~");return;}
+    pending=d;$("#thumb").src=d.url;$("#thumbWrap").style.display="inline-block";
+  }catch(e){alert("上传失败~");}}
+function clearPending(){pending=null;$("#thumbWrap").style.display="none";$("#thumb").src="";}
+
+async function publish(){
+  const c=$("#content").value.trim();const img=pending?pending.url:"";
+  if(!c&&!img){alert("写点什么，或选张图~");return;}
+  await api("/api/moments",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({content:c,image:img,visibility:"private"})});
+  $("#content").value="";clearPending();load();
+}
+
+async function load(){
+  const r=await api("/api/moments");const rows=await r.json();
+  const list=$("#list");
+  if(!rows.length){list.innerHTML='<div class="empty">还没有动态，发第一条吧~</div>';return;}
+  list.innerHTML="";
+  for(const m of rows){
+    const el=document.createElement("div");el.className="moment-card";
+    const mine=m.author==="user";
+    const av=m.author==="ke"?'🌙':'💛';
+    const imgHtml=(m.image&&isImg(m.image))?`<div class="moment-img"><img src="${esc(m.image)}" onclick="window.open('${esc(m.image)}')" /></div>`:"";
+    const comments=(m.comments||[]).map(c=>{
+      const cmine=c.author==="user";
+      return `<div class="one"><b>${esc(whoName(c.author))}：</b><span>${esc(c.content)}</span>${cmine?`<span class="cdel" onclick="delComment(${c.id})">✕</span>`:""}</div>`;
+    }).join("");
+    el.innerHTML=`
+      <div class="moment-head">
+        <div class="moment-avatar ${m.author==="ke"?"ke":"user"}">${av}</div>
+        <div><div class="moment-who">${esc(whoName(m.author))}</div><div class="moment-time">${fmtTime(m.created_at)}</div></div>
+        ${mine?`<button class="moment-del" onclick="delMoment(${m.id})">🗑</button>`:""}
+      </div>
+      ${m.content?`<div class="moment-body">${esc(m.content)}</div>`:""}
+      ${imgHtml}
+      <div class="moment-comments">
+        <div class="clist">${comments}</div>
+        <div class="crow"><input placeholder="说点什么…" /><button>评论</button></div>
+      </div>`;
+    el.querySelector(".crow button").onclick=async()=>{
+      const inp=el.querySelector(".crow input");const t=inp.value.trim();if(!t)return;
+      try{await api("/api/moments/comment",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({moment_id:m.id,content:t})});
+        inp.value="";load();}catch(e){}
+    };
+    el.querySelector(".crow input").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();el.querySelector(".crow button").click();}});
+    list.appendChild(el);
+  }
+}
+async function delMoment(id){if(!confirm("删掉这条动态？"))return;try{await api("/api/moments/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});load();}catch(e){}}
+async function delComment(id){if(!confirm("删掉这条评论？"))return;try{await api("/api/moments/comment/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});load();}catch(e){}}
+
+load().catch(()=>{});
+</script>
+</body>
+</html>

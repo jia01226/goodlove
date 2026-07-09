@@ -79,10 +79,10 @@
   .calhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
   .calhead b{font-size:15px;color:var(--gold-deep)}
   .calhead button{border:1px solid var(--line);background:var(--glass2);border-radius:10px;width:34px;height:30px;font-size:15px;color:var(--gold-deep)}
-  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
-  .cal .h{text-align:center;font-size:11px;color:var(--soft);padding:2px 0}
-  .cal .d{min-height:44px;border:1px solid var(--line);border-radius:8px;padding:2px 0 0;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;color:var(--ink)}
-  .cal .d.empty{border:none}
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;grid-auto-rows:46px}
+  .cal .h{height:auto;text-align:center;font-size:11px;color:var(--soft);align-self:center}
+  .cal .d{height:46px;border:1px solid var(--line);border-radius:8px;padding:3px 0 0;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;color:var(--ink)}
+  .cal .d.empty{border:none;background:none;box-shadow:none}
   .cal .d.today{border-color:var(--gold)}
   .cal .d.sel{box-shadow:0 0 0 2px var(--gold);border-color:var(--gold)}
   .cal .d .lbl{margin-top:2px;font-size:9px;line-height:1.4;border-radius:4px;padding:1px 3px;color:#fff;width:90%;text-align:center;word-break:keep-all}
@@ -130,6 +130,7 @@
     <div id="postList"></div>
   </section>
   <section id="dashView" class="view">
+    <h2 style="margin:2px 4px 12px;font-size:16px;color:var(--gold-deep);letter-spacing:1px">我的</h2>
     <div class="card">
       <h2>🎨 主题</h2>
       <div class="themebar" style="margin-top:8px">
@@ -163,6 +164,12 @@
     </a>
   </section>
   <section id="lifeView" class="view">
+    <a href="/moments" style="text-decoration:none;color:inherit;display:block">
+      <div class="card" style="background:linear-gradient(135deg,#fbeee6,#fdf6f0)">
+        <h2>📷 朋友圈</h2>
+        <div class="ct" style="color:var(--soft);font-size:12px">我和柯的日常 · 你来我往 ›</div>
+      </div>
+    </a>
     <a href="/diary" style="text-decoration:none;color:inherit;display:block">
       <div class="card" style="background:linear-gradient(135deg,#eceefa,#f7f6fc)">
         <h2>🌘 枕边日记</h2>
@@ -246,11 +253,21 @@
   <button data-v="chatView" class="on"><span class="ic">💬</span>聊天</button>
   <button data-v="memView"><span class="ic">📒</span>记忆库</button>
   <button data-v="lifeView"><span class="ic">💕</span>日常</button>
-  <button data-v="dashView"><span class="ic">📊</span>仪表盘</button>
+  <button data-v="dashView"><span class="ic">⚙️</span>我的</button>
 </nav>
 
 <script>
 const $=s=>document.querySelector(s);const msgs=$("#messages");
+// 角色名（换角色只改服务器 .env 的 CHARACTER，UI 标题/署名自动跟着变）
+let AI_NAME="AI";
+async function loadWhoami(){try{const r=await fetch("/api/whoami");const d=await r.json();
+  const nm=(d.character||d.app_name||"").trim();
+  if(nm){AI_NAME=nm;
+    if(currentSid===1){$("#hdrTitle").textContent=nm;}
+    document.title=nm;
+    const big=document.querySelector("#gate .big");if(big)big.textContent=nm;
+  }
+}catch(_){}}
 // ---- 主题（记住上次选的；玻璃质感全靠 CSS 变量，切主题=换变量）----
 function setTheme(t){
   if(t==="warm")document.documentElement.removeAttribute("data-theme");
@@ -287,7 +304,7 @@ function nowHM(){const d=new Date();return pad2(d.getHours())+":"+pad2(d.getMinu
 function fmtTime(s){if(!s)return"";const m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);if(!m)return"";const d=m[1]+"-"+m[2]+"-"+m[3];return (d===todayStr()?"":m[2]+"/"+m[3]+" ")+m[4]+":"+m[5];}
 function isImg(u){return /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(u||"");}
 function bubble(role,text,time,image,mid){const w=document.createElement("div");w.className="msg "+(role==="user"?"me":"gude");
-  const who=role==="user"?"我":"AI";const tag=document.createElement("span");tag.className="tag";tag.textContent=who+(time?" · "+time:"");
+  const who=role==="user"?"我":AI_NAME;const tag=document.createElement("span");tag.className="tag";tag.textContent=who+(time?" · "+time:"");
   const bb=document.createElement("div");bb.className="bubble";
   if(image){if(isImg(image)){const im=document.createElement("img");im.onload=scroll;im.src=image;im.style.cssText="max-width:200px;max-height:240px;border-radius:10px;display:block;cursor:pointer";im.onclick=()=>window.open(image);bb.appendChild(im);}else{const a=document.createElement("a");a.href=image;a.target="_blank";a.textContent="📎 "+(image.split("/").pop());a.style.color="var(--gold-deep)";bb.appendChild(a);}}
   const tx=document.createElement("span");if(text){tx.textContent=text;if(image)tx.style.cssText="display:block;margin-top:6px";}bb.appendChild(tx);
@@ -498,6 +515,7 @@ async function onPickWallpaper(input){const f=input.files&&input.files[0];input.
 function clearWallpaper(){try{localStorage.removeItem("wallpaper");}catch(_){}applyWallpaper("");}
 applyWallpaper((()=>{try{return localStorage.getItem("wallpaper")||"";}catch(_){return "";}})());
 function boot(){
+  loadWhoami();
   if(currentSid!==1){api("/api/sessions").then(r=>r.json()).then(a=>{const s=a.find(x=>x.id===currentSid);if(s)$("#hdrTitle").textContent=s.name;else setSid(1);}).catch(()=>{});}
   loadMsgs(); if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{});}}
 boot();

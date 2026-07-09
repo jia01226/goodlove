@@ -1,6 +1,7 @@
-"""杂项：首页/静态文件/sw.js、登录、用量汇总。
+"""杂项：首页/静态文件/sw.js、登录、用量汇总、角色名。
 （各功能自己的页面路由跟功能蓝图放在一起，如 /diary 在 diary.py。）
 """
+import os
 import logging
 from flask import Blueprint, jsonify, session, send_from_directory
 
@@ -39,3 +40,10 @@ def sw_js():
 @bp.get("/api/usage")
 @guard
 def api_usage(): return jsonify(db.usage_summary())
+
+
+@bp.get("/api/whoami")
+def whoami():
+    """当前角色名（.env 的 CHARACTER）+ app 名，给前端做标题——换角色只改配置、UI 自动跟着变。"""
+    name = os.environ.get("CHARACTER", "").strip()
+    return jsonify({"character": name, "app_name": os.environ.get("APP_NAME", "").strip()})

@@ -1,5 +1,6 @@
 """聊天：SSE 对话、历史消息、会话抽屉、模型选择器，以及 /chat 页面。"""
 import json
+import re
 import logging
 from flask import Blueprint, Response, jsonify, request, send_from_directory
 
@@ -12,6 +13,19 @@ from utils import guard, jbody, jget
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("chat", __name__)
+
+# 柯代发朋友圈暗号：一行独占的 [朋友圈]正文（到行尾），多行模式逐条提取
+_MOMENT_RE = re.compile(r"^\[朋友圈\][ \t]?(.+)$", re.M)
+
+
+def _extract_moments(text):
+    """从助手回复里提取 [朋友圈]... 动态正文列表，并返回去掉这些行的干净文本。
+    返回 (moments:list[str], clean_text:str)。"""
+    moments = [m.strip() for m in _MOMENT_RE.findall(text) if m.strip()]
+    clean = _MOMENT_RE.sub("", text)
+    # 清理暗号行留下的多余空行（连续空行压成一个，首尾空白去掉）
+    clean = re.sub(r"\n[ \t]*\n[ \t]*\n+", "\n\n", clean).strip()
+    return moments, clean
 
 
 @bp.get("/chat")
@@ -59,9 +73,19 @@ def api_chat():
                 continue
             acc += piece
             yield ("data: " + json.dumps({"t": piece}, ensure_ascii=False) + "\n\n").encode("utf-8")
+        posted_moment = False
         if acc:
-            db.add_message("assistant", acc, session_id=sid)
-        yield ("data: " + json.dumps({"done": True}, ensure_ascii=False) + "\n\n").encode("utf-8")
+            # 柯代发朋友圈：抽出 [朋友圈]... 落库成动态，聊天记录只存去掉暗号的干净版
+            moments_out, clean_acc = _extract_moments(acc)
+            for body in moments_out:
+                try:
+                    db.add_moment(author="ke", content=body)
+                    posted_moment = True
+                except Exception as e:
+                    logger.warning("柯代发朋友圈失败：%s", e)
+            if clean_acc:
+                db.add_message("assistant", clean_acc, session_id=sid)
+        yield ("data: " + json.dumps({"done": True, "moment": posted_moment}, ensure_ascii=False) + "\n\n").encode("utf-8")
 
     return Response(gen(), content_type=SSE_CONTENT_TYPE, headers=dict(SSE_HEADERS))
 

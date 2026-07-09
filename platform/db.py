@@ -173,6 +173,25 @@ CREATE TABLE IF NOT EXISTS concerns (
     created_at DATETIME DEFAULT (datetime('now','+8 hours')),
     updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
+
+-- 朋友圈：佳佳和柯（以后可扩展更多成员）你来我往发的动态
+CREATE TABLE IF NOT EXISTS moments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    author TEXT NOT NULL,          -- 'user'=佳佳 / 'ke'=柯（以后可扩展更多成员名）
+    content TEXT DEFAULT '',
+    image TEXT DEFAULT '',         -- 图片URL（复用 /api/upload 返回的 /uploads/xxx），可空
+    visibility TEXT DEFAULT 'private',  -- private=只你俩看（默认） / public=公开（预留，本期不做公开页）
+    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
+
+-- 朋友圈评论
+CREATE TABLE IF NOT EXISTS moment_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    moment_id INTEGER NOT NULL,
+    author TEXT NOT NULL,          -- 'user' / 'ke'
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
 """
 
 def get_db():
@@ -486,6 +505,57 @@ def touch_concern_check(cid, next_check):
 def delete_concern(cid):
     conn = get_db()
     conn.execute("DELETE FROM concerns WHERE id=?", (cid,))
+    conn.commit(); conn.close()
+
+# ---- 朋友圈（moments）----
+def add_moment(author, content, image="", visibility="private"):
+    if visibility not in ("private", "public"):
+        visibility = "private"
+    conn = get_db()
+    cur = conn.execute("INSERT INTO moments (author,content,image,visibility) VALUES (?,?,?,?)",
+                       (author, content, image, visibility))
+    conn.commit(); mid = cur.lastrowid; conn.close()
+    return mid
+
+def list_moments(limit=50):
+    """动态列表（最新在前）；每条附 comments 键=该动态的评论列表（时间正序）。"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id,author,content,image,visibility,created_at FROM moments ORDER BY id DESC LIMIT ?",
+        (limit,)).fetchall()
+    crows = conn.execute(
+        "SELECT id,moment_id,author,content,created_at FROM moment_comments ORDER BY id").fetchall()
+    conn.close()
+    by_moment = {}
+    for c in crows:
+        by_moment.setdefault(c["moment_id"], []).append(dict(c))
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["comments"] = by_moment.get(d["id"], [])
+        out.append(d)
+    return out
+
+def delete_moment(mid):
+    """删动态并连带删它的评论。"""
+    conn = get_db()
+    conn.execute("DELETE FROM moment_comments WHERE moment_id=?", (mid,))
+    conn.execute("DELETE FROM moments WHERE id=?", (mid,))
+    conn.commit(); conn.close()
+
+def add_comment(moment_id, author, content):
+    """给某条动态加评论；动态不存在则不插入、返回 None。"""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM moments WHERE id=?", (moment_id,)).fetchone():
+        conn.close(); return None
+    cur = conn.execute("INSERT INTO moment_comments (moment_id,author,content) VALUES (?,?,?)",
+                       (moment_id, author, content))
+    conn.commit(); cid = cur.lastrowid; conn.close()
+    return cid
+
+def delete_comment(cid):
+    conn = get_db()
+    conn.execute("DELETE FROM moment_comments WHERE id=?", (cid,))
     conn.commit(); conn.close()
 
 # ---- 时间胶囊 ----
