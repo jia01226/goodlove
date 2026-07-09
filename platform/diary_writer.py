@@ -20,7 +20,7 @@ def _load_env():
 _load_env()
 
 import datetime
-import db, chat_ai
+import db, chat_ai, diary_sync
 
 def china_today():
     return (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date().isoformat()
@@ -65,3 +65,9 @@ if __name__ == "__main__":
                 print(f"[{today}] 梦：没素材（今天没聊）或生成失败，不做")
     except Exception as e:
         print(f"[{today}] 做梦出错：", e)
+    # ④ 双向同步枕边日记：把 app 里柯写的这页导出进仓库 md（+git），再把仓库手写页导进 app
+    try:
+        r = diary_sync.sync()
+        print(f"[{today}] 日记同步 ✅ 导出仓库 {r['exported']} 页 / 导入 app {r['imported']} 页")
+    except Exception as e:
+        print(f"[{today}] 日记同步跳过（不影响别的）：", e)

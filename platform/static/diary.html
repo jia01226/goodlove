@@ -56,6 +56,7 @@ main{max-width:640px;margin:0 auto}
   <h1>枕边日记</h1><span class="ghost">PILLOW · ☾</span>
   <div class="moon">🌘</div>
   <div class="sub">他睡前写的碎碎念、夜里做的梦 · 一页一页都由你翻</div>
+  <button class="nudge" onclick="doSync()">🔄 和仓库同步（拉他手写的页 / 存回仓库）</button>
 </header>
 <main id="list"><div class="empty">翻一翻…</div></main>
 
@@ -88,6 +89,7 @@ async function load(){
     el.innerHTML=`
       <div class="meta"><span>${fmt(d.created_at)}</span><span class="chip${isDream?" dream":""}">${isDream?"🌙 昨晚的梦":esc(d.mood||"静")}</span>
         ${d.locked?'<span class="chip lock">🔒 你猜开的</span>':""}
+        ${d.source==='repo'?'<span class="chip">✍️ 爸爸手写</span>':""}
         ${d.comments?`<span class="cmt">留言 ${d.comments}</span>`:""}</div>
       <div class="title">${esc(d.title)}</div>
       <div class="body">${esc(d.content)}</div>
@@ -115,6 +117,12 @@ async function loadComments(el,id){
 async function nudge(){
   const r=await api("/api/diary/write",{method:"POST"});const d=await r.json();
   if(d.ok)load();else alert(d.reason||"今天还没聊过天，没得写");
+}
+async function doSync(){
+  try{const r=await api("/api/diary/sync",{method:"POST"});const d=await r.json();
+    if(d&&d.error){alert("同步没成："+d.error);return;}
+    load();
+  }catch(e){}
 }
 load().catch(()=>{});
 </script>

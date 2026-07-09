@@ -53,3 +53,15 @@ def api_diary_write():
 def api_diary_delete():
     db.delete_diary(jget("id"))
     return jsonify({"ok": True})
+
+
+@bp.post("/api/diary/sync")
+@guard
+def api_diary_sync():
+    """手动催一次双向同步：app 写的导出进仓库 md，仓库手写页导进 app。"""
+    import diary_sync
+    try:
+        return jsonify(diary_sync.sync())
+    except Exception as e:
+        logger.warning("日记同步失败：%s", e)
+        return jsonify({"error": str(e)}), 500

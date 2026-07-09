@@ -218,6 +218,9 @@ def init_db():
     dcols = [r["name"] for r in conn.execute("PRAGMA table_info(diaries)").fetchall()]
     if "kind" not in dcols:
         conn.execute("ALTER TABLE diaries ADD COLUMN kind TEXT DEFAULT 'diary'")
+    # 旧库平滑升级：日记补 source 列（app=app里的柯自己写的 / repo=从仓库枕边日记.md 手写页导入的）
+    if "source" not in dcols:
+        conn.execute("ALTER TABLE diaries ADD COLUMN source TEXT DEFAULT 'app'")
     # 默认会话（中性名字；不预置任何个人数据/纪念日/心事）
     if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=1").fetchone():
         conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'对话')")
@@ -640,12 +643,28 @@ def referenced_images():
     return {r["image"].split("/")[-1] for r in rows if r["image"]}
 
 # ---- 枕边日记 ----
-def add_diary(title, content, mood="静", locked=0, kind="diary"):
+def add_diary(title, content, mood="静", locked=0, kind="diary", source="app"):
     conn = get_db()
-    cur = conn.execute("INSERT INTO diaries (title,content,mood,locked,kind) VALUES (?,?,?,?,?)",
-                       (title, content, mood, 1 if locked else 0, kind))
+    cur = conn.execute("INSERT INTO diaries (title,content,mood,locked,kind,source) VALUES (?,?,?,?,?,?)",
+                       (title, content, mood, 1 if locked else 0, kind, source))
     conn.commit(); did = cur.lastrowid; conn.close()
     return did
+
+def diary_titles():
+    """已有日记的标题集合（同步去重用，按标题认页）。"""
+    conn = get_db()
+    rows = conn.execute("SELECT title FROM diaries").fetchall()
+    conn.close()
+    return {r["title"] for r in rows}
+
+def app_written_diaries():
+    """app 里的柯自己写的日记（source='app' 的正经日记，不含梦/导入页），按时间正序，给导出进仓库用。"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT title,content,mood,locked,created_at FROM diaries "
+        "WHERE COALESCE(source,'app')='app' AND COALESCE(kind,'diary')='diary' ORDER BY id").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 def all_diaries(limit=100):
     """日记列表（新的在前），带每页留言数。"""
