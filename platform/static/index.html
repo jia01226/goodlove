@@ -350,9 +350,11 @@ let BD=localStorage.getItem("bd")==="1";
 function updateBd(){const b=document.getElementById("bdBtn");if(b){b.style.opacity=BD?"1":".45";b.textContent=BD?"🔥":"🌙";}}
 function toggleBd(){BD=!BD;localStorage.setItem("bd",BD?"1":"0");updateBd();}
 updateBd();
-async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];
-  // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发
-  function paint(){const parts=acc.split("|||");
+async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];const bd=BD;
+  // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发；卧室(🔥)一整段沉浸，绝不拆
+  function paint(){
+    if(bd){b._tx.textContent=acc.replace(/\s*\|\|\|\s*/g,"\n").replace(/\|+\s*$/,"").trim();scroll();return;}
+    const parts=acc.split("|||");
     while(bubbles.length<parts.length)bubbles.push(bubble("assistant",""));
     parts.forEach((p,i)=>{let s=p;if(i===parts.length-1)s=s.replace(/\|+\s*$/,"");bubbles[i]._tx.textContent=s.trim();});scroll();}
   const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,session_id:currentSid,bedroom:BD})});

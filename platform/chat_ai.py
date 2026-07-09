@@ -58,6 +58,20 @@ SPLIT_RULE = (
     "需要长篇连贯表达的场景（认真讲解、深聊、亲密时刻等）才写长段——那时别拆、不用分隔符。"
 )
 
+# 卧室节奏：跟 SPLIT_RULE 互斥，放提示词末尾（历史消息里全是短泡泡样本，规矩不钉在末尾会被带偏）
+BEDROOM_RULE = (
+    "\n【卧室节奏——此刻凌驾于一切日常聊天习惯】现在是长段沉浸场景："
+    "一条消息＝一个完整的 part，单个 part 不少于 3000 字；"
+    "节奏放慢、每个环节写足、结束停在钩子上等她回应；"
+    "绝不使用 ||| 分隔符、绝不拆成短句泡泡——上面聊天记录里那种一条条的短消息是日常模式的样子，此刻不适用、不要模仿。"
+)
+
+# 钉在最后一条用户消息末尾的卧室提醒（同 _now_stamp 的双保险思路：模型对末条注意力最高）
+BEDROOM_STAMP = (
+    "\n（系统注：卧室模式进行中——这一条回复写成一个完整的 part：一整段连贯长文、不少于 3000 字、"
+    "慢慢展开别快进，绝不用 ||| 拆条。）"
+)
+
 # 模型白名单：前端可传 model 切换（日常省钱/深聊加猛）；不在名单里的一律回落默认，防乱连
 MODEL_WHITELIST = [s.strip() for s in os.environ.get(
     "MODEL_WHITELIST",
@@ -135,11 +149,13 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
     bedroom: 卧室模式（bedroom.py 只存在于服务器本地，含私密文案不进公开仓库；读不到自动降级普通模式）。"""
     parts = [BASE, _load_persona()]
     use_split = True
+    bedroom_on = False
     if bedroom:
         try:
             import bedroom as _bd
             parts[0] = _bd.load_bedroom_block()   # 卧室：沉浸开场白替换普通帽子（普通帽子会招致拒绝）
             use_split = False                      # 卧室不分句，长段沉浸
+            bedroom_on = True
             print(f"[bedroom] 开场白已加载({len(parts[0])}字)，卧室模式生效", flush=True)
         except Exception as e:
             print("[bedroom] 加载失败，降级普通模式：", e, flush=True)
@@ -150,6 +166,8 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
         parts.append(_now_context())
         if use_split:
             parts.append(SPLIT_RULE)
+        elif bedroom_on:
+            parts.append(BEDROOM_RULE)
         return "\n".join(parts)
 
     if summary:
@@ -206,9 +224,39 @@ def _now_stamp():
     except Exception:
         return ""
 
+def _strip_marker(gen, marker="|||"):
+    """流式过滤：把模型吐出的分隔符换成换行（卧室长段里不该有拆条符，前端见 ||| 就会拆泡泡）。
+    marker 可能跨 chunk 到达，尾部留 len(marker)-1 个字符缓冲。"""
+    hold = len(marker) - 1
+    buf = ""
+    for piece in gen:
+        if isinstance(piece, tuple):
+            if buf:
+                yield buf.replace(marker, "\n")
+                buf = ""
+            yield piece
+            continue
+        buf = (buf + piece).replace(marker, "\n")
+        if len(buf) > hold:
+            out, buf = buf[:-hold], buf[-hold:]
+            yield out
+    if buf:
+        yield buf.replace(marker, "\n")
+
+
 def stream_chat(history, posts, model=None, bedroom=False):
     """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。
     model: 本轮用哪个模型（已过白名单校验），不传用默认。bedroom: 卧室模式（模型路由归 bedroom.py）。"""
+    # 卧室开关先落地成"真生效"：bedroom.py 读不到就整体降级，别一半卧室一半日常
+    if bedroom:
+        try:
+            import bedroom as _bd
+            if not _bd.is_available():
+                print("[bedroom] styles 目录不在，本轮降级普通模式", flush=True)
+                bedroom = False
+        except Exception as e:
+            print("[bedroom] bedroom.py 读不到，本轮降级普通模式：", e, flush=True)
+            bedroom = False
     # 用最近一条用户的话做"精准想起"的检索词
     query = next((m["content"] for m in reversed(history) if m["author"] == "user"), None)
     summary = None
@@ -241,8 +289,15 @@ def stream_chat(history, posts, model=None, bedroom=False):
             messages.append({"role": role, "content": (m["content"] or "") + "（用户当时发过一张图片/文件）"})
         else:
             messages.append({"role": role, "content": m["content"]})
+    # 卧室模式：把历史里助手消息的 ||| 换成换行——不然满屏短泡泡样本会把模型带回"拆条"的老习惯
+    if bedroom:
+        for m in messages:
+            if m["role"] == "assistant" and isinstance(m["content"], str) and "|||" in m["content"]:
+                m["content"] = m["content"].replace("|||", "\n")
     # 把"现在几点"钉在最后一条用户消息末尾（只贴给模型看，不进数据库、前端不显示）
     stamp = _now_stamp()
+    if bedroom:
+        stamp += BEDROOM_STAMP   # 卧室双保险：长度/不拆条的规矩也钉在末条（同时间戳一个道理）
     if stamp:
         for m in reversed(messages):
             if m["role"] == "user":
@@ -256,7 +311,8 @@ def stream_chat(history, posts, model=None, bedroom=False):
             import bedroom as _bd
             # 卧室模型：.env 的 BEDROOM_MODEL 优先（换渠道后模型名不同，不用改 bedroom.py）
             bd_model = os.environ.get("BEDROOM_MODEL", "").strip() or _bd.pick_model(MODEL)
-            yield from stream_completion(messages, model=bd_model, max_tokens=_bd.max_tokens())
+            # 输出再过一道滤网：就算模型手滑吐了 |||，也在后端换成换行，前端永远见不到拆条符
+            yield from _strip_marker(stream_completion(messages, model=bd_model, max_tokens=_bd.max_tokens()))
             return
         except Exception as e:
             print("[bedroom] 模型路由失败，用默认：", e)
