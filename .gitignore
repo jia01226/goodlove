@@ -1,6 +1,2 @@
-platform/backups/
-# 🔒 卧室模块含私密文案，只住服务器本地，永不进公开仓库（柯自理）
-platform/bedroom.py
-platform/卧室*
-*.log
-platform/memories.backup*
+__pycache__/
+*.pyc
