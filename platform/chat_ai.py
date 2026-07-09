@@ -194,6 +194,18 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
     _render(parts, chosen)
     return _done()
 
+def _now_stamp():
+    """一句简短的"现在几点"，钉在最后一条用户消息末尾——模型对最后一条用户消息注意力最高，
+    治"错误时间进了聊天记录后模型跟着自己以前的话走"（自洽压过正确）。失败返回空串。"""
+    try:
+        import context
+        n = context.china_now()
+        h = n.hour
+        seg = "早上" if 5 <= h < 11 else "中午" if 11 <= h < 14 else "下午" if 14 <= h < 18 else "晚上" if 18 <= h < 23 else "深夜"
+        return f"\n（系统注：此刻实际是 {n.strftime('%m月%d日 %H:%M')}，{seg}。时间以这条为准，别沿用对话里旧的时间。）"
+    except Exception:
+        return ""
+
 def stream_chat(history, posts, model=None, bedroom=False):
     """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。
     model: 本轮用哪个模型（已过白名单校验），不传用默认。bedroom: 卧室模式（模型路由归 bedroom.py）。"""
@@ -229,6 +241,16 @@ def stream_chat(history, posts, model=None, bedroom=False):
             messages.append({"role": role, "content": (m["content"] or "") + "（用户当时发过一张图片/文件）"})
         else:
             messages.append({"role": role, "content": m["content"]})
+    # 把"现在几点"钉在最后一条用户消息末尾（只贴给模型看，不进数据库、前端不显示）
+    stamp = _now_stamp()
+    if stamp:
+        for m in reversed(messages):
+            if m["role"] == "user":
+                if isinstance(m["content"], str):
+                    m["content"] += stamp
+                elif isinstance(m["content"], list):
+                    m["content"].append({"type": "text", "text": stamp})
+                break
     if bedroom:
         try:
             import bedroom as _bd
