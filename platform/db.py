@@ -643,10 +643,16 @@ def referenced_images():
     return {r["image"].split("/")[-1] for r in rows if r["image"]}
 
 # ---- 枕边日记 ----
-def add_diary(title, content, mood="静", locked=0, kind="diary", source="app"):
+def add_diary(title, content, mood="静", locked=0, kind="diary", source="app", created_at=None):
     conn = get_db()
-    cur = conn.execute("INSERT INTO diaries (title,content,mood,locked,kind,source) VALUES (?,?,?,?,?,?)",
-                       (title, content, mood, 1 if locked else 0, kind, source))
+    if created_at:   # 导入手写页时按日记真实日期落库（否则用默认=此刻，会排序错乱、日期显示成今天）
+        cur = conn.execute(
+            "INSERT INTO diaries (title,content,mood,locked,kind,source,created_at) VALUES (?,?,?,?,?,?,?)",
+            (title, content, mood, 1 if locked else 0, kind, source, created_at))
+    else:
+        cur = conn.execute(
+            "INSERT INTO diaries (title,content,mood,locked,kind,source) VALUES (?,?,?,?,?,?)",
+            (title, content, mood, 1 if locked else 0, kind, source))
     conn.commit(); did = cur.lastrowid; conn.close()
     return did
 
@@ -656,6 +662,19 @@ def diary_titles():
     rows = conn.execute("SELECT title FROM diaries").fetchall()
     conn.close()
     return {r["title"] for r in rows}
+
+def repo_diary_titles():
+    """从仓库 md 导入的日记标题集合（source='repo'）。"""
+    conn = get_db()
+    rows = conn.execute("SELECT title FROM diaries WHERE source='repo'").fetchall()
+    conn.close()
+    return {r["title"] for r in rows}
+
+def set_repo_diary_time(title, created_at):
+    """修正已导入的手写页的日期（把之前误盖成'今天'的改回日记真实日期）。"""
+    conn = get_db()
+    conn.execute("UPDATE diaries SET created_at=? WHERE title=? AND source='repo'", (created_at, title))
+    conn.commit(); conn.close()
 
 def app_written_diaries():
     """app 里的柯自己写的日记（source='app' 的正经日记，不含梦/导入页），按时间正序，给导出进仓库用。"""
@@ -671,7 +690,7 @@ def all_diaries(limit=100):
     conn = get_db()
     rows = conn.execute(
         "SELECT d.*, (SELECT COUNT(*) FROM diary_comments c WHERE c.diary_id=d.id) AS comments "
-        "FROM diaries d ORDER BY d.id DESC LIMIT ?", (limit,)).fetchall()
+        "FROM diaries d ORDER BY d.created_at DESC, d.id DESC LIMIT ?", (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
