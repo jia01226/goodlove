@@ -286,14 +286,20 @@ async function login(){const r=await fetch("/api/login",{method:"POST",headers:{
 function nowHM(){const d=new Date();return pad2(d.getHours())+":"+pad2(d.getMinutes());}
 function fmtTime(s){if(!s)return"";const m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);if(!m)return"";const d=m[1]+"-"+m[2]+"-"+m[3];return (d===todayStr()?"":m[2]+"/"+m[3]+" ")+m[4]+":"+m[5];}
 function isImg(u){return /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(u||"");}
-function bubble(role,text,time,image){const w=document.createElement("div");w.className="msg "+(role==="user"?"me":"gude");
+function bubble(role,text,time,image,mid){const w=document.createElement("div");w.className="msg "+(role==="user"?"me":"gude");
   const who=role==="user"?"我":"AI";const tag=document.createElement("span");tag.className="tag";tag.textContent=who+(time?" · "+time:"");
   const bb=document.createElement("div");bb.className="bubble";
   if(image){if(isImg(image)){const im=document.createElement("img");im.onload=scroll;im.src=image;im.style.cssText="max-width:200px;max-height:240px;border-radius:10px;display:block;cursor:pointer";im.onclick=()=>window.open(image);bb.appendChild(im);}else{const a=document.createElement("a");a.href=image;a.target="_blank";a.textContent="📎 "+(image.split("/").pop());a.style.color="var(--gold-deep)";bb.appendChild(a);}}
   const tx=document.createElement("span");if(text){tx.textContent=text;if(image)tx.style.cssText="display:block;margin-top:6px";}bb.appendChild(tx);
   if(role==="user"){w.appendChild(bb);w.appendChild(tag);}else{w.appendChild(tag);w.appendChild(bb);}
-  msgs.appendChild(w);scroll();bb._tag=tag;bb._who=who;bb._tx=tx;return bb;}
+  msgs.appendChild(w);scroll();bb._tag=tag;bb._who=who;bb._tx=tx;if(mid)bindLongPress(bb,mid);return bb;}
 function setBubbleTime(bb,t){if(bb&&bb._tag)bb._tag.textContent=bb._who+" · "+t;}
+// 长按(手机)/右键(电脑)删掉一条走样、说错的消息
+function bindLongPress(el,mid){let tm=null;const cancel=()=>{if(tm)clearTimeout(tm);tm=null;};
+  el.addEventListener("touchstart",()=>{tm=setTimeout(()=>{cancel();delMsg(mid);},600);},{passive:true});
+  el.addEventListener("touchend",cancel);el.addEventListener("touchmove",cancel);
+  el.addEventListener("contextmenu",e=>{e.preventDefault();delMsg(mid);});}
+async function delMsg(mid){if(!confirm("删掉这条消息？（走样、说错的话，删了它就不在对话里了）"))return;try{await api("/api/messages/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:mid})});loadMsgs();}catch(e){}}
 let pending=null;
 async function onPickFile(input){const f=input.files&&input.files[0];input.value="";if(!f)return;
   $("#pendingBar").style.display="flex";$("#pendingThumb").style.display="none";$("#pendingName").textContent="上传中… "+f.name;
@@ -312,10 +318,10 @@ function setSid(id){currentSid=id;try{localStorage.setItem("sid",id);}catch(_){}
 // 分句显示：助手消息按 ||| 拆成几条泡泡（像微信一句句发）；没分隔符就原样一条
 function splitParts(s){return (s||"").split(/\s*\|\|\|\s*/).map(x=>x.trim()).filter(Boolean);}
 function renderMsg(m){const t=fmtTime(m.created_at);
-  if(m.author==="user")return bubble("user",m.content,t,m.image);
+  if(m.author==="user")return bubble("user",m.content,t,m.image,m.id);
   const parts=splitParts(m.content);
-  if(parts.length<=1)return bubble(m.author,parts[0]||m.content,t,m.image);
-  parts.forEach((p,i)=>bubble("assistant",p,t,i===0?m.image:""));}  // 每条都带时间:标签同宽才对得齐
+  if(parts.length<=1)return bubble(m.author,parts[0]||m.content,t,m.image,m.id);
+  parts.forEach((p,i)=>bubble("assistant",p,t,i===0?m.image:"",m.id));}  // 每条都带时间:标签同宽才对得齐；长按可删
 async function loadMsgs(){try{const r=await api("/api/messages?session_id="+currentSid);const arr=await r.json();msgs.innerHTML="";if(!arr.length){msgs.innerHTML='<div class="empty">跟它说说话吧~</div>';}arr.forEach(renderMsg);scrollHard();}catch(e){}}
 function openDrawer(){$("#drawer").style.display="block";loadSessions();}
 function closeDrawer(){$("#drawer").style.display="none";}
@@ -359,7 +365,8 @@ async function send(){const t=$("#input").value.trim();const img=pending?pending
 $("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}});
 
 function visBadge(v){return v==="app"?'<span style="color:var(--soft)"> · 🔒只在这里</span>':v==="repo"?'<span style="color:var(--soft)"> · 📄仅仓库</span>':'';}
-async function loadPosts(){try{const r=await api("/api/posts");const arr=await r.json();$("#postList").innerHTML=arr.map(p=>`<div class="card"><div class="meta">[${p.type}] · ${p.created_at}${visBadge(p.visibility)}</div><div class="ct">${esc(p.content)}</div></div>`).join("")||'<div class="empty">还没有记忆，添加第一条吧~</div>';}catch(e){}}
+async function loadPosts(){try{const r=await api("/api/posts");const arr=await r.json();$("#postList").innerHTML=arr.map(p=>`<div class="card"><div class="meta">[${p.type}] · ${p.created_at}${visBadge(p.visibility)}<button onclick="delPost(${p.id})" title="删掉这条记忆" style="float:right;border:none;background:none;cursor:pointer;font-size:15px;opacity:.55;padding:0 2px">🗑</button></div><div class="ct">${esc(p.content)}</div></div>`).join("")||'<div class="empty">还没有记忆，添加第一条吧~</div>';}catch(e){}}
+async function delPost(id){if(!confirm("删掉这条记忆？（记错的、被带偏的记忆，删了它就不会再被想起）"))return;try{await api("/api/posts/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});loadPosts();}catch(e){}}
 async function addPost(){const c=$("#pcontent").value.trim();if(!c)return;await api("/api/posts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:$("#ptype").value,content:c,visibility:$("#pvis").value})});$("#pcontent").value="";loadPosts();}
 async function loadUsage(){try{const r=await api("/api/usage");const u=await r.json();$("#usage").textContent=`累计对话：${u.n} 次\n输入 tokens：${u.i}\n输出 tokens：${u.o}\n粗估花费：$${(u.c||0).toFixed(4)}`;}catch(e){}}
 function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}

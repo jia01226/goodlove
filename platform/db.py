@@ -218,10 +218,17 @@ def add_message(author, content, session_id=1, msg_type="text", image=""):
 def recent_messages(session_id=1, limit=40):
     conn = get_db()
     rows = conn.execute(
-        "SELECT author,content,created_at,image FROM chat_messages WHERE session_id=? ORDER BY id DESC LIMIT ?",
+        "SELECT id,author,content,created_at,image FROM chat_messages WHERE session_id=? ORDER BY id DESC LIMIT ?",
         (session_id, limit)).fetchall()
     conn.close()
     return [dict(r) for r in reversed(rows)]
+
+def delete_message(mid):
+    """删一条聊天消息，连带清掉它的向量（走样/说错的话要能撤）。"""
+    conn = get_db()
+    conn.execute("DELETE FROM chat_messages WHERE id=?", (mid,))
+    conn.execute("DELETE FROM embeddings WHERE kind='chat' AND ref_id=?", (mid,))
+    conn.commit(); conn.close()
 
 def all_posts():
     conn = get_db()
@@ -254,6 +261,13 @@ def add_post(ptype, content, visibility="both"):
                        (ptype, content, visibility))
     conn.commit(); pid = cur.lastrowid; conn.close()
     return pid
+
+def delete_post(pid):
+    """删一条记忆，连带清掉它的向量（记错/被污染的记忆要能撤，不然会一直被想起）。"""
+    conn = get_db()
+    conn.execute("DELETE FROM posts WHERE id=?", (pid,))
+    conn.execute("DELETE FROM embeddings WHERE kind='post' AND ref_id=?", (pid,))
+    conn.commit(); conn.close()
 
 def log_usage(model, it, ot, cost):
     conn = get_db()

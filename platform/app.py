@@ -120,6 +120,15 @@ def api_messages():
     sid = _chat_sid(request.args.get("session_id"))
     return jsonify(db.recent_messages(session_id=sid, limit=200))
 
+@app.post("/api/messages/delete")
+@guard
+def api_delete_message():
+    mid = (request.json or {}).get("id")
+    if not mid:
+        return jsonify({"error": "need id"}), 400
+    db.delete_message(mid)
+    return jsonify({"ok": True})
+
 # ---- 会话抽屉（多条 1对1 对话）----
 @app.get("/api/sessions")
 @guard
@@ -181,6 +190,15 @@ def api_add_post():
     except Exception as e:
         print("索引新记忆失败：", e)
     return jsonify({"id": pid})
+
+@app.post("/api/posts/delete")
+@guard
+def api_delete_post():
+    pid = (request.json or {}).get("id")
+    if not pid:
+        return jsonify({"error": "need id"}), 400
+    db.delete_post(pid)
+    return jsonify({"ok": True})
 
 @app.get("/api/vector/status")
 @guard
