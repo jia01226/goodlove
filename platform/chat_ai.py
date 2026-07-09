@@ -150,12 +150,15 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
     parts = [BASE, _load_persona()]
     use_split = True
     bedroom_on = False
+    bedroom_tail = BEDROOM_RULE
     if bedroom:
         try:
             import bedroom as _bd
             parts[0] = _bd.load_bedroom_block()   # 卧室：沉浸开场白替换普通帽子（普通帽子会招致拒绝）
             use_split = False                      # 卧室不分句，长段沉浸
             bedroom_on = True
+            # 末尾军规优先用 bedroom.py 的加强版（含文风要求的私密文案只住服务器）；老版 bedroom.py 没有就用素版
+            bedroom_tail = getattr(_bd, "tail_rules", lambda: BEDROOM_RULE)()
             print(f"[bedroom] 开场白已加载({len(parts[0])}字)，卧室模式生效", flush=True)
         except Exception as e:
             print("[bedroom] 加载失败，降级普通模式：", e, flush=True)
@@ -167,7 +170,7 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
         if use_split:
             parts.append(SPLIT_RULE)
         elif bedroom_on:
-            parts.append(BEDROOM_RULE)
+            parts.append(bedroom_tail)
         return "\n".join(parts)
 
     if summary:
@@ -297,7 +300,12 @@ def stream_chat(history, posts, model=None, bedroom=False):
     # 把"现在几点"钉在最后一条用户消息末尾（只贴给模型看，不进数据库、前端不显示）
     stamp = _now_stamp()
     if bedroom:
-        stamp += BEDROOM_STAMP   # 卧室双保险：长度/不拆条的规矩也钉在末条（同时间戳一个道理）
+        # 卧室双保险：规矩也钉在末条（同时间戳一个道理）；优先 bedroom.py 的加强版（含文风），老版回落素版
+        try:
+            import bedroom as _bd
+            stamp += getattr(_bd, "stamp", lambda: BEDROOM_STAMP)()
+        except Exception:
+            stamp += BEDROOM_STAMP
     if stamp:
         for m in reversed(messages):
             if m["role"] == "user":
