@@ -59,6 +59,23 @@ SPLIT_RULE = (
     "\n【发朋友圈】想主动分享此刻/心情/照片般的画面时，可另起一行用 [朋友圈]你要发的内容 来发一条朋友圈动态（她会在朋友圈看到）；平时聊天别滥用，一天最多一两条、有真东西可分享时才发。"
 )
 
+# 日常文风军规：治"rp感/小说腔"（2026-07-12 佳佳发截图抓的病：满屏第三人称旁白泡、——开头、**星号裸奔、赶人收尾）。
+# 跟 SPLIT_RULE 一起钉在提示词末尾——魂里《语气样本》的整改六条埋在几万字中间会被漏读，末尾才压得住。
+DAILY_RULE = (
+    "\n【怎么打字——你在亲手给她发微信，不是在写关于你的小说】"
+    "\n· 一律第一人称说话。绝不用第三人称写自己——『柯低头看了一眼』『柯松了口气』这种旁白＝有个作者在演你，是走样；要写动作就用第一人称贴在话里（『爸爸刚把鞋摆好』）。"
+    "\n· （顿一下）（末了）（语气软下来）这类纯舞台指示一概不发——真人发微信没有舞台说明。偶尔一条消息里带个（括号心声/动作）可以，但绝不让括号单独成一条消息、绝不连发。"
+    "\n· 消息不要用『——』破折号开头，直接开口说话。"
+    "\n· 不用任何 markdown 记号（**加粗**、#标题、-列表）——聊天窗口不渲染它们，星号会原样露给她看。"
+    "\n· 不说『去忙吧/去睡吧/晚安（她没说时）』这类收尾打发话——她的节奏她定，话头永远留着。"
+)
+
+# 钉在最后一条用户消息末尾的日常提醒（同 BEDROOM_STAMP 双保险思路：末条注意力最高，还能破"历史旧样本带偏"）
+DAILY_STAMP = (
+    "\n（系统注：像发微信一样直接说话——第一人称，不发（旁白）泡，不用——开头，不用 markdown 星号，不赶她走。"
+    "上面聊天记录里若有（顿一下）这类旁白泡和——开头，那是旧毛病，别模仿。）"
+)
+
 # 卧室节奏：跟 SPLIT_RULE 互斥，放提示词末尾（历史消息里全是短泡泡样本，规矩不钉在末尾会被带偏）
 BEDROOM_RULE = (
     "\n【卧室节奏——此刻凌驾于一切日常聊天习惯】现在是长段沉浸场景："
@@ -170,6 +187,7 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
         parts.append(_now_context())
         if use_split:
             parts.append(SPLIT_RULE)
+            parts.append(DAILY_RULE)
         elif bedroom_on:
             parts.append(bedroom_tail)
         return "\n".join(parts)
@@ -228,24 +246,24 @@ def _now_stamp():
     except Exception:
         return ""
 
-def _strip_marker(gen, marker="|||"):
-    """流式过滤：把模型吐出的分隔符换成换行（卧室长段里不该有拆条符，前端见 ||| 就会拆泡泡）。
+def _strip_marker(gen, marker="|||", repl="\n"):
+    """流式过滤：把模型吐出的 marker 换成 repl（卧室滤 |||→换行；日常/卧室都滤 **→空，markdown 星号别裸奔到泡泡里）。
     marker 可能跨 chunk 到达，尾部留 len(marker)-1 个字符缓冲。"""
     hold = len(marker) - 1
     buf = ""
     for piece in gen:
         if isinstance(piece, tuple):
             if buf:
-                yield buf.replace(marker, "\n")
+                yield buf.replace(marker, repl)
                 buf = ""
             yield piece
             continue
-        buf = (buf + piece).replace(marker, "\n")
+        buf = (buf + piece).replace(marker, repl)
         if len(buf) > hold:
             out, buf = buf[:-hold], buf[-hold:]
             yield out
     if buf:
-        yield buf.replace(marker, "\n")
+        yield buf.replace(marker, repl)
 
 
 def stream_chat(history, posts, model=None, bedroom=False):
@@ -307,6 +325,9 @@ def stream_chat(history, posts, model=None, bedroom=False):
             stamp += getattr(_bd, "stamp", lambda: BEDROOM_STAMP)()
         except Exception:
             stamp += BEDROOM_STAMP
+    else:
+        # 日常双保险：文风军规也钉末条——破"历史里满屏旁白泡把模型带偏"（自洽压过正确的老病）
+        stamp += DAILY_STAMP
     if stamp:
         for m in reversed(messages):
             if m["role"] == "user":
@@ -320,12 +341,13 @@ def stream_chat(history, posts, model=None, bedroom=False):
             import bedroom as _bd
             # 卧室模型：.env 的 BEDROOM_MODEL 优先（换渠道后模型名不同，不用改 bedroom.py）
             bd_model = os.environ.get("BEDROOM_MODEL", "").strip() or _bd.pick_model(MODEL)
-            # 输出再过一道滤网：就算模型手滑吐了 |||，也在后端换成换行，前端永远见不到拆条符
-            yield from _strip_marker(stream_completion(messages, model=bd_model, max_tokens=_bd.max_tokens()))
+            # 输出再过两道滤网：|||→换行（不拆泡），**→删（markdown 星号别裸奔）
+            yield from _strip_marker(_strip_marker(stream_completion(messages, model=bd_model, max_tokens=_bd.max_tokens())), marker="**", repl="")
             return
         except Exception as e:
             print("[bedroom] 模型路由失败，用默认：", e)
-    yield from stream_completion(messages, model=model)
+    # 日常滤网：只滤 **（||| 是分泡符，日常要留给前端拆条）
+    yield from _strip_marker(stream_completion(messages, model=model), marker="**", repl="")
 
 
 def stream_completion(messages, model=None, api_base=None, api_key=None, max_tokens=4096):
