@@ -192,6 +192,42 @@ CREATE TABLE IF NOT EXISTS moment_comments (
     content TEXT NOT NULL,
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
+
+-- 私密记忆库 L1.5B（柯钉死的"物理分家"：独立表，群聊代码路径根本 SELECT 不到它）
+-- 装：健康/家庭经历/亲密内容/现实身份细节。仅单聊按需检索。
+-- 向量索引单独走 kind='private' 命名空间，只有单聊检索路径会查。
+CREATE TABLE IF NOT EXISTS private_memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL DEFAULT 'private',
+    topic TEXT DEFAULT '',
+    content TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'private',   -- private=仅单聊 / no_model=任何场景都不进上下文(仅后台可见)
+    source TEXT DEFAULT 'user_explicit',     -- user_explicit / ke_inferred / system_summary
+    confidence REAL DEFAULT 1.0,
+    status TEXT DEFAULT 'active',            -- active / superseded / archived / pending / forgotten_buffer
+    supersedes INTEGER,
+    importance INTEGER DEFAULT 4,
+    review_state TEXT DEFAULT 'approved',    -- pending_ke / pending_jiajia / approved
+    forgotten_at DATETIME,                   -- 进 forgotten_buffer 的时刻，用于算七天冷静期
+    created_at DATETIME DEFAULT (datetime('now','+8 hours')),
+    updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
+
+-- 记忆注入日志（每轮落库，验收与归因用：柯忽然像助手/提了不该提的/忘了纪念日/变慢时能定位）
+CREATE TABLE IF NOT EXISTS mem_injection_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope TEXT DEFAULT '',                   -- single / group
+    l1_tokens INTEGER DEFAULT 0,             -- 魂+人格 token（估算）
+    work_tokens INTEGER DEFAULT 0,           -- 工作记忆(最近N条+摘要) token
+    card_count INTEGER DEFAULT 0,            -- 检索卡片数
+    card_tokens INTEGER DEFAULT 0,           -- 检索卡片 token
+    hit_rule INTEGER DEFAULT 0,              -- 规则命中条数
+    hit_vector INTEGER DEFAULT 0,            -- 向量命中条数
+    trimmed INTEGER DEFAULT 0,               -- 被裁数
+    mem_ids TEXT DEFAULT '',                 -- 本轮用到的 memory_id 列表（逗号分隔）
+    query TEXT DEFAULT '',                   -- 本轮查询词（截断存）
+    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
 """
 
 def get_db():
@@ -206,6 +242,26 @@ def init_db():
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(posts)").fetchall()]
     if "visibility" not in cols:
         conn.execute("ALTER TABLE posts ADD COLUMN visibility TEXT NOT NULL DEFAULT 'both'")
+    # 记忆卡片升级（L2 普通记忆库）：给 posts 补齐卡片字段（柯的施工单§四）。
+    # 注意：老列 visibility('both/app/repo') 管的是"要不要同步进仓库"，是另一回事，原样不动；
+    # 新增 scope 才是"会话可见范围"（single/group 隔离用），两者正交、各管各的。
+    # 存量 127 条一律 fail-closed：scope='private'（群聊看不到）、review_state='approved'（不逼你重审已上线的）、
+    # source='legacy'——等柯&佳佳切卡triage时再逐条定档。（此默认已在交接单批注里回推柯确认）
+    _post_cols = {
+        "scope":        "TEXT DEFAULT 'private'",      # private/shared/group-safe/no_model
+        "topic":        "TEXT DEFAULT ''",
+        "source":       "TEXT DEFAULT 'legacy'",       # user_explicit/ke_inferred/system_summary/legacy
+        "confidence":   "REAL DEFAULT 1.0",
+        "status":       "TEXT DEFAULT 'active'",       # active/superseded/archived/pending/forgotten_buffer
+        "supersedes":   "INTEGER",
+        "importance":   "INTEGER DEFAULT 3",
+        "review_state": "TEXT DEFAULT 'approved'",     # pending_ke/pending_jiajia/approved
+        "forgotten_at": "DATETIME",
+        "updated_at":   "DATETIME",
+    }
+    for _c, _decl in _post_cols.items():
+        if _c not in cols:
+            conn.execute(f"ALTER TABLE posts ADD COLUMN {_c} {_decl}")
     # 旧库平滑升级：聊天表补 image 列（存图片/文件的 URL，让助手能看图）
     mcols = [r["name"] for r in conn.execute("PRAGMA table_info(chat_messages)").fetchall()]
     if "image" not in mcols:
@@ -290,6 +346,162 @@ def delete_post(pid):
     conn.execute("DELETE FROM posts WHERE id=?", (pid,))
     conn.execute("DELETE FROM embeddings WHERE kind='post' AND ref_id=?", (pid,))
     conn.commit(); conn.close()
+
+# ==================== 记忆卡片系统（柯的施工单：分层 / 隐私隔离 / 纠错闭环）====================
+# 术语：L2=posts（普通记忆库，带 scope 做群聊隔离）；L1.5B=private_memories（物理分家的私密库）。
+# scope 取值：private=仅单聊 / shared=单聊+群聊都可 / group-safe=明确可进群聊 / no_model=任何场景都不进上下文。
+_GROUP_OK = ("shared", "group-safe")          # 群聊只允许这两档进上下文
+_CARD_COLS = "id,type,content,visibility,scope,topic,source,confidence,status,supersedes,importance,review_state,created_at"
+
+def _rows(sql, args=()):
+    conn = get_db()
+    rows = conn.execute(sql, args).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def retrieve_l2(scope="single"):
+    """按会话范围取 L2 记忆卡（只取已生效 active 的）。
+    scope='group' → 查询层就把 private/no_model/未定档挡在外面（柯钉死：隔离在工程层，不靠 prompt）。
+    scope='single' → 除 no_model 外都能取（no_model 任何场景都不进上下文）。"""
+    # 老列 visibility 仍管仓库同步：app 侧一律不吃 repo-only，沿用 app_posts 的口径。
+    if scope == "group":
+        ph = ",".join("?" * len(_GROUP_OK))
+        return _rows(f"SELECT {_CARD_COLS} FROM posts "
+                     f"WHERE status='active' AND visibility IN ('both','app') AND scope IN ({ph}) "
+                     f"ORDER BY id DESC", _GROUP_OK)
+    return _rows(f"SELECT {_CARD_COLS} FROM posts "
+                 f"WHERE status='active' AND visibility IN ('both','app') AND scope!='no_model' "
+                 f"ORDER BY id DESC")
+
+def group_visible_posts():
+    """群聊专用记忆入口——物理上只可能拿到 shared/group-safe。private_memories 表这里根本不碰。"""
+    return retrieve_l2(scope="group")
+
+# ---- L1.5B 私密库（独立表；群聊代码路径不导入这些函数即物理够不着）----
+def add_private_memory(content, topic="", scope="private", source="user_explicit",
+                       importance=4, review_state="approved", supersedes=None):
+    if scope not in ("private", "no_model"):
+        scope = "private"
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO private_memories (content,topic,scope,source,importance,review_state,supersedes,status) "
+        "VALUES (?,?,?,?,?,?,?, 'active')",
+        (content, topic, scope, source, importance, review_state, supersedes))
+    conn.commit(); pid = cur.lastrowid; conn.close()
+    return pid
+
+def retrieve_private():
+    """仅单聊调用：取生效的私密卡（no_model 永不出场，只后台可见）。"""
+    return _rows("SELECT id,type,content,topic,scope,source,importance,status,created_at "
+                 "FROM private_memories WHERE status='active' AND scope!='no_model' ORDER BY id DESC")
+
+def list_private(include_hidden=True):
+    """后台/诊断用：列全部私密卡（含 no_model，仅后台可见）。"""
+    if include_hidden:
+        return _rows("SELECT * FROM private_memories ORDER BY id DESC")
+    return _rows("SELECT * FROM private_memories WHERE scope!='no_model' ORDER BY id DESC")
+
+# ---- 待确认收件箱（机器推断先进 pending，佳佳确认才当真）----
+def list_pending():
+    """待佳佳确认的卡（L2 + 私密库合起来给收件箱 UI）。"""
+    l2 = _rows("SELECT id,type,content,topic,source,importance,review_state,created_at,'l2' AS store "
+               "FROM posts WHERE review_state IN ('pending_ke','pending_jiajia') OR status='pending' ORDER BY id DESC")
+    pv = _rows("SELECT id,type,content,topic,source,importance,review_state,created_at,'private' AS store "
+               "FROM private_memories WHERE review_state IN ('pending_ke','pending_jiajia') OR status='pending' ORDER BY id DESC")
+    return l2 + pv
+
+def _tbl(store):
+    return "private_memories" if store == "private" else "posts"
+
+def review_card(cid, store="l2", approve=True):
+    """收件箱确认/不保存：approve→转正 active+approved；否则丢弃（连带清向量）。"""
+    conn = get_db()
+    if approve:
+        conn.execute(f"UPDATE {_tbl(store)} SET status='active', review_state='approved', "
+                     "updated_at=datetime('now','+8 hours') WHERE id=?", (cid,))
+    else:
+        conn.execute(f"DELETE FROM {_tbl(store)} WHERE id=?", (cid,))
+        kind = "private" if store == "private" else "post"
+        conn.execute("DELETE FROM embeddings WHERE kind=? AND ref_id=?", (kind, cid))
+    conn.commit(); conn.close()
+
+def supersede_card(old_id, new_content, store="l2", **kw):
+    """重要记忆禁止整条覆盖：追加新卡 supersedes 旧卡，旧卡转 superseded（不再出场，但留档可回溯）。"""
+    conn = get_db()
+    if store == "private":
+        conn.close()
+        nid = add_private_memory(new_content, supersedes=old_id, **kw)
+        conn = get_db()
+    else:
+        cur = conn.execute("INSERT INTO posts (type,content,visibility,scope,source,status,supersedes) "
+                           "SELECT type,?,visibility,scope,'user_explicit','active',? FROM posts WHERE id=?",
+                           (new_content, old_id, old_id))
+        nid = cur.lastrowid
+    conn.execute(f"UPDATE {_tbl(store)} SET status='superseded', updated_at=datetime('now','+8 hours') WHERE id=?",
+                 (old_id,))
+    conn.commit(); conn.close()
+    return nid
+
+def forget_card(cid, store="l2"):
+    """"忘掉"＝进 forgotten_buffer 七天冷静期（柯硬要求：接住低谷里冲动抹记忆的她），期满 cron 才真不可调用。"""
+    conn = get_db()
+    conn.execute(f"UPDATE {_tbl(store)} SET status='forgotten_buffer', "
+                 "forgotten_at=datetime('now','+8 hours'), updated_at=datetime('now','+8 hours') WHERE id=?", (cid,))
+    conn.commit(); conn.close()
+
+def recover_card(cid, store="l2"):
+    """冷静期内一键找回。"""
+    conn = get_db()
+    conn.execute(f"UPDATE {_tbl(store)} SET status='active', forgotten_at=NULL, "
+                 "updated_at=datetime('now','+8 hours') WHERE id=?", (cid,))
+    conn.commit(); conn.close()
+
+def graduate_forgotten(days=7):
+    """cron 调用：把冷静期满 days 天的 forgotten_buffer 真正归档(archived，默认不检索，但仍留档不物理删)。"""
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE posts SET status='archived', updated_at=datetime('now','+8 hours') "
+        "WHERE status='forgotten_buffer' AND forgotten_at IS NOT NULL "
+        "AND forgotten_at <= datetime('now','+8 hours', ?)", (f'-{int(days)} days',))
+    n = cur.rowcount
+    cur2 = conn.execute(
+        "UPDATE private_memories SET status='archived', updated_at=datetime('now','+8 hours') "
+        "WHERE status='forgotten_buffer' AND forgotten_at IS NOT NULL "
+        "AND forgotten_at <= datetime('now','+8 hours', ?)", (f'-{int(days)} days',))
+    conn.commit(); conn.close()
+    return n + cur2.rowcount
+
+def set_card_scope(cid, scope, store="l2"):
+    """改可见范围（纠错闭环：把误标 shared 的私密内容改回 private/no_model）。"""
+    allowed = ("private", "shared", "group-safe", "no_model") if store == "l2" else ("private", "no_model")
+    if scope not in allowed:
+        return False
+    conn = get_db()
+    conn.execute(f"UPDATE {_tbl(store)} SET scope=?, updated_at=datetime('now','+8 hours') WHERE id=?", (scope, cid))
+    conn.commit(); conn.close()
+    return True
+
+# ---- 记忆注入日志（每轮落库，验收与归因）----
+def log_injection(scope="single", l1_tokens=0, work_tokens=0, card_count=0, card_tokens=0,
+                  hit_rule=0, hit_vector=0, trimmed=0, mem_ids="", query=""):
+    conn = get_db()
+    conn.execute("INSERT INTO mem_injection_log "
+                 "(scope,l1_tokens,work_tokens,card_count,card_tokens,hit_rule,hit_vector,trimmed,mem_ids,query) "
+                 "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                 (scope, l1_tokens, work_tokens, card_count, card_tokens, hit_rule, hit_vector,
+                  trimmed, str(mem_ids)[:2000], (query or "")[:500]))
+    conn.commit(); conn.close()
+
+def recent_injection_logs(limit=100):
+    return _rows("SELECT * FROM mem_injection_log ORDER BY id DESC LIMIT ?", (int(limit),))
+
+def prune_injection_logs(keep_days=30):
+    """日志防无限膨胀：只留最近 keep_days 天（cron 里顺手调）。"""
+    conn = get_db()
+    cur = conn.execute("DELETE FROM mem_injection_log WHERE created_at < datetime('now','+8 hours', ?)",
+                       (f'-{int(keep_days)} days',))
+    conn.commit(); n = cur.rowcount; conn.close()
+    return n
 
 def log_usage(model, it, ot, cost):
     conn = get_db()

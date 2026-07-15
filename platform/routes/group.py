@@ -49,7 +49,9 @@ def api_group_chat():
     if not member:
         return jsonify({"error": "no members"}), 500
     history = db.recent_messages(session_id=GROUP_SESSION, limit=40)
-    posts = db.app_posts()
+    # 隐私硬隔离（柯钉死）：群聊只喂 shared/group-safe 记忆，private/未定档/no_model 在查询层就够不着。
+    # 曾经这里用 app_posts()＝和单聊同一份记忆，私密内容会漏进群聊——此改从工程层堵死。
+    posts = db.group_visible_posts()
 
     def gen():
         # 先告诉前端这轮谁发言（好显示名字/头像）
