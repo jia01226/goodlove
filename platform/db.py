@@ -390,6 +390,44 @@ def add_private_memory(content, topic="", scope="private", source="user_explicit
     conn.commit(); pid = cur.lastrowid; conn.close()
     return pid
 
+def content_exists(content):
+    """灌库去重：这条内容是否已在 posts 或 private_memories 里（不分状态，避免重复初切）。"""
+    content = (content or "").strip()
+    if not content:
+        return False
+    conn = get_db()
+    hit = conn.execute("SELECT 1 FROM posts WHERE content=? "
+                       "UNION SELECT 1 FROM private_memories WHERE content=? LIMIT 1",
+                       (content, content)).fetchone()
+    conn.close()
+    return hit is not None
+
+def ingest_card(store, content, ctype="MEMORY", topic="", scope="private",
+                source="system_summary", importance=3, review_state="pending_ke", status="pending"):
+    """灌库原语（导入工具/初切用）：往 L2(posts) 或 私密库(private_memories) 塞一张卡。
+    默认 fail-closed：status=pending + review_state=pending_ke + scope=private——机器初切一律待人确认，
+    不直接当真、不进群聊。柯校对→佳佳抽验→review_card 转正才 active。返回 (store, id)。"""
+    content = (content or "").strip()
+    if not content:
+        return None
+    conn = get_db()
+    if store == "private":
+        if scope not in ("private", "no_model"):
+            scope = "private"
+        cur = conn.execute(
+            "INSERT INTO private_memories (type,topic,content,scope,source,importance,review_state,status) "
+            "VALUES ('private',?,?,?,?,?,?,?)",
+            (topic, content, scope, source, importance, review_state, status))
+    else:
+        if scope not in ("private", "shared", "group-safe", "no_model"):
+            scope = "private"
+        cur = conn.execute(
+            "INSERT INTO posts (type,content,visibility,scope,topic,source,importance,review_state,status) "
+            "VALUES (?,?, 'both', ?,?,?,?,?,?)",
+            (ctype, content, scope, topic, source, importance, review_state, status))
+    conn.commit(); cid = cur.lastrowid; conn.close()
+    return (store, cid)
+
 def retrieve_private():
     """仅单聊调用：取生效的私密卡（no_model 永不出场，只后台可见）。"""
     return _rows("SELECT id,type,content,topic,scope,source,importance,status,created_at "
