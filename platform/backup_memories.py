@@ -56,6 +56,20 @@ def save(data):
         json.dump(data, f, ensure_ascii=False, indent=1)
     return fp
 
+def raw_snapshot(tag="pre-migration"):
+    """动库前的保命档：用 SQLite 在线备份 API 拷一份字节级完整 .db（含 embeddings）。
+    JSON 档是可读快照；这份 .db 是"出事直接换回去"的原样档，恢复最省心、绝不崩。
+    并发安全：走 conn.backup()，不是 shutil.copy（避免拷到写一半的库）。"""
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    stamp = china_now().strftime("%Y-%m-%d-%H%M%S")
+    dst = os.path.join(BACKUP_DIR, f"db原样档-{tag}-{stamp}.db")
+    src = sqlite3.connect(DB_PATH)
+    dstconn = sqlite3.connect(dst)
+    with dstconn:
+        src.backup(dstconn)
+    dstconn.close(); src.close()
+    return dst
+
 def push_to_repo(fp):
     """可选：拷进私有备份仓库并推上去。git add 只限备份文件本身。"""
     if not REPO_DIR:
@@ -72,6 +86,12 @@ def push_to_repo(fp):
         print("⚠️ 异地备份失败（本地备份不受影响）：", e)
 
 if __name__ == "__main__":
+    import sys
+    # 动库前先跑： ./venv/bin/python backup_memories.py --raw  →  多存一份字节级 .db 原样档
+    if "--raw" in sys.argv:
+        rp = raw_snapshot()
+        mb = os.path.getsize(rp) / 1048576
+        print(f"✅ 原样档已存 → {rp}（{mb:.1f}MB，出事直接换回这个文件）")
     data = export_all()
     n = sum(len(v) for v in data["表"].values())
     fp = save(data)
