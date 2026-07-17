@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#FBF8F1" />
+<link rel="apple-touch-icon" href="/static/icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>柯今天想记住的</title>
+<!--
+  记忆·待确认收件箱（骨架版）——柯回批⑧余力活，待部署。
+  照《记忆系统前端要求-给知言》：待确认列表 + 确认/改/不保存三键 + 人话文案。
+  小克只起可用骨架（真连后端 /api/memory/pending + /review），玻璃皮沿用同一套主题变量，
+  精修/宫格/动效交知言。别删接口契约，套皮就行。
+-->
+<style>
+  :root{
+    --bg1:#FBF8F1;--bg2:#F6EFE2;--blob1:rgba(201,168,106,.32);--blob2:rgba(232,196,160,.35);
+    --ink:#4A4138;--soft:#9C8F7E;--gold:#C9A86A;--gold-deep:#B8924E;
+    --line:rgba(255,255,255,.65);--glass:rgba(255,255,255,.55);--glass2:rgba(255,255,255,.38);
+    --shadow:0 8px 32px rgba(150,120,70,.14)
+  }
+  html[data-theme="sakura"]{
+    --bg1:#FBF3F5;--bg2:#F7E8ee;--blob1:rgba(224,148,171,.30);--blob2:rgba(244,196,210,.40);
+    --ink:#54424b;--soft:#a8919b;--gold:#D48CA1;--gold-deep:#C2708A;--shadow:0 8px 32px rgba(196,120,146,.15)
+  }
+  html[data-theme="mist"]{
+    --bg1:#F2F4F9;--bg2:#E9EDF6;--blob1:rgba(140,160,205,.28);--blob2:rgba(180,196,230,.38);
+    --ink:#454b5c;--soft:#8d94a8;--gold:#8FA3CC;--gold-deep:#7189BC;--shadow:0 8px 32px rgba(110,132,180,.15)
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,"PingFang SC","Segoe UI",sans-serif;color:var(--ink);
+    background:linear-gradient(165deg,var(--bg1),var(--bg2));min-height:100dvh;transition:background .4s}
+  body::before,body::after{content:"";position:fixed;border-radius:50%;filter:blur(70px);z-index:-1;pointer-events:none}
+  body::before{width:46vh;height:46vh;top:-12vh;right:-14vh;background:var(--blob1)}
+  body::after{width:52vh;height:52vh;bottom:-16vh;left:-16vh;background:var(--blob2)}
+  header{padding:12px;text-align:center;position:sticky;top:0;z-index:5;
+    background:var(--glass);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:18px;letter-spacing:1px;color:var(--gold-deep)}
+  header .back{position:absolute;left:12px;top:50%;transform:translateY(-50%);border:none;background:none;font-size:22px;color:var(--gold-deep)}
+  main{max-width:640px;margin:0 auto;padding:14px 14px calc(30px + env(safe-area-inset-bottom))}
+  .hint{font-size:12.5px;color:var(--soft);line-height:1.7;margin:2px 4px 14px}
+  .card{background:var(--glass);backdrop-filter:blur(16px) saturate(1.5);-webkit-backdrop-filter:blur(16px) saturate(1.5);
+    border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+  .meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .tag{font-size:11px;color:var(--gold-deep);background:var(--glass2);border:1px solid var(--line);border-radius:10px;padding:2px 9px}
+  .tag.priv{color:#c2708a}
+  .body{font-size:15px;line-height:1.7;white-space:pre-wrap;word-break:break-word;margin:2px 0 6px}
+  textarea{width:100%;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;font-family:inherit;min-height:60px;outline:none;
+    background:var(--glass);color:var(--ink);margin:4px 0 8px;display:none}
+  textarea:focus{border-color:var(--gold)}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  button.act{border:1px solid var(--line);background:var(--glass2);border-radius:13px;padding:9px 16px;font-size:14px;font-family:inherit;color:var(--gold-deep)}
+  button.ok{border:none;background:linear-gradient(135deg,var(--gold),var(--gold-deep));color:#fff}
+  button.no{color:var(--soft)}
+  .empty{text-align:center;color:var(--soft);font-size:14px;padding:40px 10px;line-height:1.8}
+  /* 登录门（沿用各页同款） */
+  #gate{display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);align-items:center;justify-content:center;z-index:20}
+  #gate .box{background:#fff;border-radius:16px;padding:22px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <button class="back" onclick="location.href='/'">‹</button>
+  <h1>柯今天想记住的</h1>
+</header>
+<main>
+  <div class="hint">这些是柯（或系统）从你们的话里记下来的初稿——<b>你点头才算数</b>。确认保存＝进记忆库；改一下再存＝改完再收；不保存＝丢掉不记。</div>
+  <div id="list"></div>
+</main>
+
+<div id="gate"><div class="box">请先在主页登录后再来看这里。<br><br><button class="act" onclick="location.href='/'">回主页</button></div></div>
+
+<script>
+  const $=s=>document.querySelector(s);
+  // 沿用主页存的主题
+  try{const t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}
+  async function api(path,opt){const r=await fetch(path,opt);if(r.status===401){$("#gate").style.display="flex";throw 0;}return r;}
+
+  function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+  async function load(){
+    let rows=[];
+    try{ rows=await (await api("/api/memory/pending")).json(); }
+    catch(e){ if(e===0)return; $("#list").innerHTML='<div class="empty">加载失败，待部署接通后重试。</div>'; return; }
+    if(!rows.length){ $("#list").innerHTML='<div class="empty">这会儿没有待确认的记忆～<br>柯记下新东西时会出现在这里。</div>'; return; }
+    $("#list").innerHTML=rows.map(r=>{
+      const priv = r.store==="private";
+      const src = ({user_explicit:"你亲口说的",ke_inferred:"柯记的",system_summary:"系统总结",legacy:"老记忆"})[r.source]||"柯记的";
+      return `<div class="card" data-id="${r.id}" data-store="${r.store}">
+        <div class="meta">
+          <span class="tag ${priv?'priv':''}">${priv?'🔒 私密（只单聊）':'普通记忆'}</span>
+          ${r.topic?`<span class="tag">${esc(r.topic)}</span>`:''}
+          <span class="tag">${src}</span>
+        </div>
+        <div class="body">${esc(r.content)}</div>
+        <textarea placeholder="改成你想记住的样子…">${esc(r.content)}</textarea>
+        <div class="btns">
+          <button class="act ok" data-a="ok">确认保存</button>
+          <button class="act" data-a="edit">改一下再存</button>
+          <button class="act no" data-a="no">不保存</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  // 事件委托：三键
+  $("#list").addEventListener("click", async e=>{
+    const btn=e.target.closest("button[data-a]"); if(!btn)return;
+    const card=btn.closest(".card"); const id=card.dataset.id, store=card.dataset.store;
+    const ta=card.querySelector("textarea"); const a=btn.dataset.a;
+    if(a==="edit"){                       // 展开改写框；再点“确认保存”带上新内容
+      if(ta.style.display!=="block"){ ta.style.display="block"; ta.focus(); return; }
+    }
+    let payload={id:Number(id), store, approve:(a!=="no")};
+    if(a!=="no" && ta.style.display==="block" && ta.value.trim()) payload.content=ta.value.trim();
+    card.style.opacity=.5;
+    try{
+      await api("/api/memory/pending/review",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+      card.remove();
+      if(!$("#list").children.length) load();
+    }catch(err){ if(err!==0){ card.style.opacity=1; alert("没存上，再试一下"); } }
+  });
+
+  load();
+</script>
+</body>
+</html>

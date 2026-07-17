@@ -1,12 +1,19 @@
 """记忆库（posts）与向量索引。"""
 import logging
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, send_from_directory
 
 import db
+from constants import STATIC_DIR
 from utils import guard, jbody, jget
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("memory", __name__)
+
+
+@bp.get("/inbox")
+def inbox_page():
+    """记忆·待确认收件箱页面（骨架，待部署）。"""
+    return send_from_directory(STATIC_DIR, "inbox.html")
 
 
 @bp.get("/api/posts")

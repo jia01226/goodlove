@@ -166,7 +166,6 @@
         <div class="tile"><b>柯的相册</b><span>先留壳，之后放角色照片和回忆照。</span></div>
         <div class="tile"><b>声音设定</b><span>未来接 TTS 时，不和聊天混在一起。</span></div>
         <div class="tile"><b>文风设定</b><span>只给自己人看的说话手感。</span></div>
-        <div class="tile"><b>群聊成员</b><span>知言、小克等成员以后在这里管理。</span></div>
       </div>`;
     return section;
   }
