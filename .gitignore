@@ -1,2 +1,25 @@
 __pycache__/
 *.pyc
+
+# ⚠️ goodlove 是【公开仓库】（2026-07-17 验证：匿名 API 返回 200）。
+# 主力护栏在 platform/.gitignore（.env / memories.db / uploads/ / bedroom.py 等，一直都在）。
+# 这里补它漏掉的几个缺口——2026-07-17 清缸时，一次 `git add -A` 差点把 .env.bak-* 里的
+# 5 行密钥推上公开仓库，才发现 `.env` 这条规则挡不住 `.env.bak-0708` 这种变体。
+
+# 密钥备份的各种变体（platform/.gitignore 的 `.env` 只挡得住正主）
+.env*
+!.env.example
+*.bak
+*.bak-*
+*.bak.*
+
+# 数据库与备份：聊天记录、记忆卡、私密库全在里头
+*.db
+memories.backup-*
+backups/
+
+# 密钥
+*.pem
+
+# 运行日志（含聊天片段）
+*.log
