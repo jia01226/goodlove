@@ -244,7 +244,7 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
         return _done()
 
     if len(posts) <= FULL_MEMORY_LIMIT or not query:
-        parts.append("\n\n===== 记忆库（最新在前）=====")
+        parts.append("\n\n===== 记忆库（最新在前；这些都是旧的、不是她现在说的话，垫在心里当背景，别把过去当成此刻）=====")
         _render(parts, posts[:200])
         stat["l2_ids"] = [p["id"] for p in posts[:200]]
         stat["card_tokens"] += sum(_approx_tokens(f"{p['type']}{p['content']}") for p in posts[:200])
@@ -278,7 +278,7 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
         if p["id"] not in seen:
             chosen.append(p); seen.add(p["id"])
 
-    parts.append("\n\n===== 记忆库（已为这次对话挑出最相关的）=====")
+    parts.append("\n\n===== 记忆库（已为这次对话挑出最相关的；都是旧的、不是她现在说的话，垫在心里当背景，别把过去当成此刻）=====")
     _render(parts, chosen)
     stat["l2_ids"] = [p["id"] for p in chosen]
     stat["card_tokens"] += sum(_approx_tokens(f"{p['type']}{p['content']}") for p in chosen)
