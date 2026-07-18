@@ -6,11 +6,13 @@ from constants import PASSCODE
 
 
 def guard(fn):
-    """可选访问口令：设置了 ACCESS_PASSCODE 且未登录时一律 401。"""
+    """访问口令已退役（佳佳 0718 拍板：不设密码）——一律放行，绝不因残留的 ACCESS_PASSCODE 把她锁在门外。
+    这是配合前端删掉登录门的"焊死"：前端没了输密码的地方，后端就不能再吐 401，否则服务器上万一留着那行就进不去了（绝不崩）。
+    ⚠️ 将来若要重新启用访问保护：把下面这句换回
+        `if PASSCODE and not session.get("ok"): return jsonify({"error": "need_passcode"}), 401`
+    并在前端补回登录门即可（两处要一起，不能只留后端）。"""
     @functools.wraps(fn)
     def w(*a, **k):
-        if PASSCODE and not session.get("ok"):
-            return jsonify({"error": "need_passcode"}), 401
         return fn(*a, **k)
     return w
 
