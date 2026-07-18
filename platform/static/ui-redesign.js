@@ -81,6 +81,7 @@
       .gl-home nav button[data-v="chatView"] .ic::before{content:"◌"}
       .gl-home nav button[data-v="memoryView"] .ic::before{content:"◇"}
       .gl-home nav button[data-v="oursView"] .ic::before{content:"⌁"}
+      .gl-home nav button .ic:has(svg)::before{display:none}.gl-home nav button .ic svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}
       .gl-home .nav-badge{position:absolute;top:3px;left:calc(50% + 8px);display:none;min-width:17px;height:17px;padding:0 5px;border-radius:999px;background:var(--wine);color:#fff;font:600 10px/17px inherit}
       .gl-home .memory-tabs{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:22px;padding:4px;border:0;border-radius:15px;background:#f1ece9;overflow:hidden}
       .gl-home .memory-tabs::before{content:"";position:absolute;z-index:0;left:4px;top:4px;width:calc((100% - 8px)/4);height:calc(100% - 8px);border-radius:12px;background:#fff;box-shadow:0 4px 16px rgba(54,37,42,.06);transform:translateX(0);transition:transform .28s cubic-bezier(.22,.61,.36,1)}
@@ -118,6 +119,18 @@
       .gl-home .section-label{margin:20px 3px 9px;color:var(--soft);font-size:12px;letter-spacing:.08em}
       .gl-home #oursView>a>.card{background:var(--glass)!important;color:var(--ink)!important}
       .gl-home #oursView>a>.card .ct{color:var(--soft)!important}
+      .gl-home #oursView{padding:0 0 34px}.gl-home .ours-home{padding-bottom:24px}.gl-home .ours-home[hidden],.gl-home .life-calendar-page[hidden]{display:none!important}
+      .gl-home .ours-cover{position:relative;height:330px;overflow:hidden;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(250,248,245,.97)),radial-gradient(circle at 58% 26%,#fff 0 10%,transparent 31%),radial-gradient(circle at 64% 20%,#eadcdb 0 14%,transparent 37%),radial-gradient(circle at 32% 43%,#f3e7e3 0 12%,transparent 34%),linear-gradient(135deg,#efe6e2,#f8f3ef 48%,#e8ddd8)}
+      .gl-home .ours-cover::before{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.5) 45%,transparent 68%)}.gl-home .ours-cover::after{content:"";position:absolute;width:210px;height:210px;left:31%;top:24px;border:1px solid rgba(255,255,255,.58);border-radius:46% 54% 49% 51%;transform:rotate(-16deg);box-shadow:0 0 0 22px rgba(255,255,255,.08),0 0 0 42px rgba(255,255,255,.05)}
+      .gl-home .ours-brand{position:absolute;z-index:2;left:20px;top:18px;display:flex;align-items:center;gap:8px;min-height:36px;padding:0 13px;border:1px solid rgba(121,91,96,.08);border-radius:18px;background:rgba(255,255,255,.78);color:var(--wine-deep);font:500 12px Georgia,serif;box-shadow:0 8px 22px rgba(74,56,59,.06)}.gl-home .ours-brand i{color:var(--gold);font-style:normal}
+      .gl-home .ours-script{position:absolute;z-index:1;top:62px;left:22%;color:rgba(255,255,255,.92);font:italic 34px/1.1 Georgia,serif;letter-spacing:-.04em;transform:rotate(-6deg)}.gl-home .ours-days{position:absolute;z-index:2;left:0;right:0;top:118px;text-align:center}.gl-home .ours-days strong{display:block;color:#4e494c;font:300 76px/.95 Georgia,serif;letter-spacing:-.08em}.gl-home .ours-days span{display:block;margin-top:11px;color:#918986;font:300 9px Georgia,serif;letter-spacing:.19em;text-transform:uppercase}
+      .gl-home .ours-content{position:relative;z-index:3;margin-top:-58px;padding:0 14px}.gl-home .ours-letter{padding:23px 20px 17px;border:1px solid var(--line);border-radius:20px;background:rgba(255,255,255,.95);text-align:center;box-shadow:var(--shadow)}.gl-home .ours-letter-label{color:#aaa19d;font-size:10px;letter-spacing:.2em}.gl-home .ours-letter-text{margin:16px 0 14px;color:#625b58;font:400 14px/1.9 Georgia,"Songti SC",serif;white-space:pre-line}.gl-home .ours-letter-actions{display:flex;justify-content:center;gap:24px}.gl-home .ours-letter-actions a{color:#a09793;font-size:10px;text-decoration:none}
+      .gl-home .ours-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:12px}.gl-home .ours-stat{min-height:100px;padding:14px 7px;border:1px solid var(--line);border-radius:17px;background:#fff;text-align:center}.gl-home .ours-stat i{display:flex;width:28px;height:28px;margin:0 auto 8px;align-items:center;justify-content:center;border-radius:10px;font-style:normal}.gl-home .ours-stat:nth-child(1) i{background:#fff8dd}.gl-home .ours-stat:nth-child(2) i{background:#f7e9eb}.gl-home .ours-stat:nth-child(3) i{background:#c8efeb}.gl-home .ours-stat b{display:block;color:var(--ink)!important;font:400 18px Georgia,"Songti SC",serif}.gl-home .ours-stat span{display:block;margin-top:5px;color:#a49c98;font-size:9px;letter-spacing:.08em}
+      .gl-home .ours-anniversary{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-top:12px;padding:18px 19px;border:1px solid var(--line);border-radius:18px;background:#fff}.gl-home .ours-anniversary small{display:block;color:#aaa19d;font-size:9px;letter-spacing:.18em}.gl-home .ours-anniversary b{display:block;margin-top:8px;color:var(--ink)!important;font:500 13px Georgia,"Songti SC",serif}.gl-home .ours-count{color:#6f6664;font:300 29px Georgia,serif;white-space:nowrap}.gl-home .ours-count span{font:400 10px sans-serif;color:#a09894}
+      .gl-home .ours-destinations{margin-top:12px;padding:20px 14px 17px;border:1px solid var(--line);border-radius:20px;background:#fff}.gl-home .ours-destinations h3{margin:0 0 17px;text-align:center;color:#aaa19d;font-size:10px;font-weight:400;letter-spacing:.28em}.gl-home .ours-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:17px 7px}.gl-home .ours-entry{display:block;border:0;background:transparent;color:#6e6764;text-align:center;text-decoration:none;font:10px/1.35 inherit}.gl-home .ours-entry .home-icon{display:grid;width:46px;height:46px;margin:0 auto 7px;place-items:center;border-radius:15px;background:#faf7f6;color:#8b777b}.gl-home .ours-entry svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}.gl-home .ours-entry.calendar .home-icon{background:#fff8dd;color:#84704f}.gl-home .ours-entry.diary .home-icon{background:#f7e9eb;color:#9c6972}.gl-home .ours-entry.moments .home-icon{background:#ecebfb;color:#6e6a91}.gl-home .ours-entry.memory .home-icon{background:#edf7ff;color:#587385}.gl-home .ours-entry.anniv .home-icon{background:#fbf1e4;color:#9b7651}.gl-home .ours-entry.mood .home-icon{background:#f7edf2;color:#956c7f}.gl-home .ours-entry.photos .home-icon{background:#eef5ed;color:#647d66}.gl-home .ours-entry.more .home-icon{background:#f3eff8;color:#766987}
+      .gl-home .ours-note{margin:14px 6px 0;color:#9d9591;font-size:9px;line-height:1.65;text-align:center}.gl-home .life-tools-store{display:none!important}
+      .gl-home .life-calendar-page{padding:22px 16px 34px}.gl-home .life-calendar-top{display:flex;align-items:center;gap:12px;margin-bottom:18px}.gl-home .life-back{display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:12px;background:#fff;color:var(--wine);font-size:23px}.gl-home .life-calendar-top h2{margin:0;color:var(--wine);font-size:21px}.gl-home .life-calendar-top p{margin:4px 0 0;color:var(--soft);font-size:11px}.gl-home .life-calendar-card{margin:0!important;padding:22px 18px!important}.gl-home .life-calendar-card>h2,.gl-home .life-calendar-card>.ct:first-of-type{display:none}.gl-home .life-calendar-card .legend{display:none}.gl-home .life-calendar-card .cal{gap:4px;grid-auto-rows:54px}.gl-home .life-calendar-card .cal .d{height:54px;border-color:transparent;border-radius:11px;padding-top:5px;background:#fff}.gl-home .life-calendar-card .cal .d.today{border-color:transparent}.gl-home .life-calendar-card .cal .d.today:not(.sel){box-shadow:none}.gl-home .life-calendar-card .cal .d.today:not(.sel)::first-line{background:#f7e9eb}.gl-home .life-calendar-card .cal .d.sel{border-color:rgba(170,116,125,.12);box-shadow:inset 0 0 0 1px rgba(170,116,125,.12);background:#fffafa}.gl-home .life-calendar-card .cal .d .lbl{margin-top:4px;border-radius:7px;padding:2px 1px;font-size:8px}.gl-home .life-calendar-card .shiftbar{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.gl-home .life-calendar-card .shiftbar>span{margin-bottom:2px}.gl-home .life-calendar-card .shiftbar button{min-height:42px;border:0!important;border-radius:11px!important;padding:7px 12px}.gl-home .life-calendar-card .shiftbar button.clr{border:1px solid var(--line)!important;background:#fff!important;color:var(--soft)!important}
+      .gl-home .tool-sheet-host>.card{margin:0!important;box-shadow:none!important}.gl-home .more-life-list{display:grid;gap:9px}.gl-home .more-life-list a,.gl-home .more-life-list button{display:flex;align-items:center;justify-content:space-between;min-height:50px;padding:0 15px;border:1px solid var(--line);border-radius:13px;background:#fff;color:var(--ink);text-decoration:none;font:13px inherit}
       .gl-home #settingsView{padding-bottom:30px}
       .gl-home .bottom-sheet-layer{position:fixed;inset:0;z-index:30;display:flex;align-items:flex-end;justify-content:center;background:rgba(54,39,34,.25);animation:glFade .16s ease}
       .gl-home .bottom-sheet{width:min(680px,100%);max-height:78dvh;overflow:auto;padding:8px 18px calc(22px + env(safe-area-inset-bottom));background:#fffdf9;border:1px solid var(--line);border-bottom:0;border-radius:24px 24px 0 0;box-shadow:0 -12px 36px rgba(63,40,34,.12)}
@@ -126,7 +139,7 @@
       .gl-home .detail-section{padding:14px 0;border-top:1px solid var(--line)}.gl-home .detail-section h3{margin:0 0 7px;color:var(--wine);font-size:13px}.gl-home .detail-section p{margin:0;color:var(--ink);font-size:14px;line-height:1.7;white-space:pre-wrap}.gl-home .detail-section small{color:var(--soft);line-height:1.6}
       .gl-home .accuracy-actions,.gl-home .sheet-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}.gl-home .accuracy-actions button,.gl-home .sheet-actions button{min-height:44px;padding:8px;border:1px solid var(--line);border-radius:11px;background:var(--glass2);color:var(--ink);font:12px/1.35 inherit}.gl-home .accuracy-actions button:first-child{background:var(--wine);color:#fff;border-color:var(--wine)}
       .gl-home .recall-card{padding:13px 14px;margin-bottom:8px;border:1px solid var(--line);border-radius:16px;background:var(--glass2)}.gl-home .recall-card strong{display:block;margin-bottom:4px;color:var(--wine);font-size:13px}.gl-home .recall-card p{margin:0;color:var(--ink);font-size:13px;line-height:1.6}
-      @media(max-width:380px){.gl-home .quick-row{grid-template-columns:1fr}.gl-home .memory-tabs{gap:2px}.gl-home .memory-tab{font-size:11px}.gl-home .accuracy-actions{grid-template-columns:1fr}.gl-home .ours-hero{padding:26px 21px}.gl-home .ours-hero p{max-width:88%}}
+      @media(max-width:380px){.gl-home .quick-row{grid-template-columns:1fr}.gl-home .memory-tabs{gap:2px}.gl-home .memory-tab{font-size:11px}.gl-home .accuracy-actions{grid-template-columns:1fr}.gl-home .ours-grid{column-gap:4px}.gl-home .ours-cover{height:316px}}
       @media(min-width:760px){.gl-home .view{padding-top:26px}.gl-home .memory-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.gl-home .chat-quick{max-width:560px;margin-left:auto;margin-right:auto}}
       @media(prefers-reduced-motion:reduce){.gl-home *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
     `;
@@ -216,7 +229,7 @@
       </section>`;
   }
 
-  function buildOursView(view) {
+  function buildOursViewLegacy(view) {
     view.id = "oursView";
     $$(":scope > a", view).forEach((link) => {
       if (["/moments", "/diary", "/reading", "/capsule"].includes(link.getAttribute("href"))) link.remove();
@@ -243,6 +256,95 @@
     if (activity) activity.style.display = "none";
   }
 
+  function homeIcon(name) {
+    const paths = {
+      calendar: `<rect x="5" y="7" width="22" height="20" rx="6"/><path d="M10 4v6M22 4v6M5 13h22"/><path d="M16 24s-4-2.4-4-5.3c0-2.3 2.8-3.2 4-1.2 1.2-2 4-1.1 4 1.2 0 2.9-4 5.3-4 5.3Z"/>`,
+      photo: `<rect x="7" y="5" width="19" height="22" rx="5" transform="rotate(5 16 16)"/><path d="m9 22 5-5 4 3 3-4 5 6"/><circle cx="20.5" cy="11" r="2"/><path d="M5 10v13a4 4 0 0 0 4 4h12"/>`,
+      memory: `<path d="M7 18c-1.5-5.7 2.5-10.5 8.6-10.5 6.6 0 10.6 5.8 8.2 11.2-2 4.5-7 6.3-11.5 4.3"/><path d="M7.2 18.2 5 23l5.2-.8"/><path d="M15.8 12.2c1.7-2.1 5-.8 4.7 1.9-.2 2.2-2.5 3.8-4.7 5.2-2.2-1.4-4.5-3-4.7-5.2-.3-2.7 3-4 4.7-1.9Z"/>`,
+      diary: `<path d="M8 5h14a4 4 0 0 1 4 4v18H11a5 5 0 0 1-5-5V7a2 2 0 0 1 2-2Z"/><path d="M11 5v22M15 12h7M15 17h7"/>`,
+      moments: `<circle cx="12" cy="12" r="5"/><circle cx="22" cy="18" r="5"/><path d="M5 27c.8-5 3.6-7.5 7-7.5 2.1 0 3.8.8 5 2.3M18 27c.6-3 2-4.5 4-4.5 2.2 0 3.8 1.5 4.5 4.5"/>`,
+      heart: `<path d="M16 26S6 20 6 12.5C6 7 12.5 5 16 10c3.5-5 10-3 10 2.5C26 20 16 26 16 26Z"/><path d="M16 10v12"/>`,
+      mood: `<circle cx="16" cy="16" r="11"/><path d="M11.5 13h.1M20.4 13h.1M11.5 19c2.8 2.6 6.2 2.6 9 0"/>`,
+      more: `<circle cx="8" cy="16" r="1.7"/><circle cx="16" cy="16" r="1.7"/><circle cx="24" cy="16" r="1.7"/>`
+    };
+    return `<svg viewBox="0 0 32 32" aria-hidden="true">${paths[name] || paths.more}</svg>`;
+  }
+
+  function buildOursView(view) {
+    view.id = "oursView";
+    const originals = Array.from(view.children);
+    const calendarCard = originals.find((node) => node.querySelector?.("#cal"));
+    const moodCard = originals.find((node) => node.querySelector?.("#moodNote"));
+    const anniversaryCard = originals.find((node) => node.querySelector?.("#annivList"));
+    const concernCard = originals.find((node) => node.querySelector?.("#concernList"));
+    const periodCard = originals.find((node) => node.querySelector?.("#periodInfo"));
+    view.replaceChildren();
+    view.insertAdjacentHTML("beforeend", `
+      <section class="ours-home">
+        <div class="ours-cover"><span class="ours-brand"><i>✦</i> 佳佳和柯</span><span class="ours-script">Our quiet home</span><div class="ours-days"><strong id="oursDays">—</strong><span id="oursSince">days together · quietly treasured</span></div></div>
+        <div class="ours-content">
+          <section class="ours-letter"><div class="ours-letter-label" id="oursLetterLabel">✦ 柯写给你的话 ✦</div><p class="ours-letter-text" id="oursLetterText">今天也把你认真放在心上。</p><div class="ours-letter-actions"><a href="/diary">♡ 收好这封</a><a href="/diary">✎ 回他一句</a></div></section>
+          <section class="ours-stats"><div class="ours-stat"><i>⌁</i><b id="oursToday">今天</b><span>一起生活</span></div><div class="ours-stat"><i>♡</i><b id="oursMood">未记录</b><span>今日心情</span></div><div class="ours-stat"><i>☾</i><b id="oursShift">未排班</b><span>今日班次</span></div></section>
+          <button class="ours-anniversary" id="oursAnniversaryButton" type="button"><span><small>我 们 的 纪 念 日</small><b id="oursAnniversaryName">等你记下第一个日子</b></span><span class="ours-count" id="oursAnniversaryCount">—<span> 天</span></span></button>
+          <section class="ours-destinations"><h3>去 哪 里</h3><div class="ours-grid">
+            <button class="ours-entry calendar" id="openLifeCalendar" type="button"><span class="home-icon">${homeIcon("calendar")}</span>生活日历</button>
+            <a class="ours-entry diary" href="/diary"><span class="home-icon">${homeIcon("diary")}</span>日记</a>
+            <a class="ours-entry moments" href="/moments"><span class="home-icon">${homeIcon("moments")}</span>朋友圈</a>
+            <button class="ours-entry memory" id="openMemoryCenter" type="button"><span class="home-icon">${homeIcon("memory")}</span>回忆</button>
+            <button class="ours-entry anniv" id="openAnniversary" type="button"><span class="home-icon">${homeIcon("heart")}</span>纪念日</button>
+            <button class="ours-entry mood" id="openMood" type="button"><span class="home-icon">${homeIcon("mood")}</span>心情</button>
+            <a class="ours-entry photos" href="/photos"><span class="home-icon">${homeIcon("photo")}</span>照片</a>
+            <button class="ours-entry more" id="openLifeMore" type="button"><span class="home-icon">${homeIcon("more")}</span>更多</button>
+          </div></section><p class="ours-note">首页负责感受与陪伴，生活日历负责收好每天发生的事。</p>
+        </div>
+      </section>
+      <section class="life-calendar-page" hidden><div class="life-calendar-top"><button class="life-back" type="button" aria-label="返回我们的首页">‹</button><div><h2>生活日历</h2><p>点一天，再为那一天排班。</p></div></div><div class="calendar-card-host"></div></section>
+      <div class="life-tools-store" aria-hidden="true"></div>`);
+    const store = $(".life-tools-store", view);
+    originals.forEach((node) => { if (node !== calendarCard) store.appendChild(node); });
+    if (calendarCard) { calendarCard.classList.add("life-calendar-card"); $(".calendar-card-host", view).appendChild(calendarCard); }
+    const toggleCalendar = (open) => {
+      $(".ours-home", view).hidden = open; $(".life-calendar-page", view).hidden = !open;
+      if ($("#hdrTitle")) $("#hdrTitle").textContent = open ? "生活日历" : "我们的";
+      if ($("#hdrSub")) $("#hdrSub").textContent = open ? "每一天，都有我们生活过的痕迹" : "一起走过的日子";
+      $("main")?.scrollTo?.({ top: 0, behavior: "smooth" }); if (open) window.loadLife?.();
+    };
+    $("#openLifeCalendar", view)?.addEventListener("click", () => toggleCalendar(true));
+    $(".life-back", view)?.addEventListener("click", () => toggleCalendar(false));
+    $("#openMemoryCenter", view)?.addEventListener("click", () => showView("memoryView"));
+    $("#openMood", view)?.addEventListener("click", () => openStoredLifeCard(moodCard, "今天的心情"));
+    $("#openAnniversary", view)?.addEventListener("click", () => openStoredLifeCard(anniversaryCard, "我们的纪念日"));
+    $("#oursAnniversaryButton", view)?.addEventListener("click", () => openStoredLifeCard(anniversaryCard, "我们的纪念日"));
+    $("#openLifeMore", view)?.addEventListener("click", () => openMoreLife(concernCard, periodCard));
+    loadOursLetter();
+  }
+
+  async function loadOursLetter() {
+    try {
+      const rows = await (await window.api("/api/diary")).json();
+      const entry = rows.find((row) => row.kind !== "dream" && !row.locked);
+      if (!entry) return;
+      if ($("#oursLetterLabel")) $("#oursLetterLabel").textContent = `✦ ${(entry.author || "柯")}写给今天的话 ✦`;
+      if ($("#oursLetterText")) $("#oursLetterText").textContent = String(entry.content || "").slice(0, 88) || "今天也把你认真放在心上。";
+    } catch (_) {}
+  }
+
+  function openStoredLifeCard(card, title) {
+    if (!card) return;
+    const store = card.parentElement;
+    const layer = makeSheet(`<div class="sheet-head"><div><h2>${escapeHtml(title)}</h2><p>属于今天的事，可以随时回来修改。</p></div><button class="sheet-close" aria-label="关闭">×</button></div><div class="tool-sheet-host"></div>`);
+    $(".tool-sheet-host", layer).appendChild(card);
+    const close = () => { store.appendChild(card); layer.remove(); };
+    $$(".sheet-close", layer).forEach((button) => button.addEventListener("click", close, { once: true }));
+    layer.addEventListener("click", (event) => { if (event.target === layer) close(); });
+  }
+
+  function openMoreLife(concernCard, periodCard) {
+    const layer = makeSheet(`<div class="sheet-head"><div><h2>更多生活记录</h2><p>需要的时候再打开，不让工具打扰日常。</p></div><button class="sheet-close" aria-label="关闭">×</button></div><div class="more-life-list"><a href="/reading">一起读 <span>›</span></a><a href="/capsule">时间胶囊 <span>›</span></a><a href="/protocol">每日功课 <span>›</span></a><button type="button" data-open-tool="concern">待办与提醒 <span>›</span></button><button type="button" data-open-tool="period">身体记录 <span>›</span></button></div>`);
+    $("[data-open-tool='concern']", layer)?.addEventListener("click", () => { layer.remove(); openStoredLifeCard(concernCard, "待办与提醒"); });
+    $("[data-open-tool='period']", layer)?.addEventListener("click", () => { layer.remove(); openStoredLifeCard(periodCard, "身体记录"); });
+  }
+
   function tuneSettings(view) {
     view.id = "settingsView";
     view.insertAdjacentHTML("afterbegin", `<h2 class="view-title">设置</h2><div class="view-sub">不打扰日常，需要时再来这里。</div>`);
@@ -251,7 +353,7 @@
   }
 
   function rebuildNav(nav) {
-    nav.innerHTML = `<button data-v="chatView" class="on"><span class="ic"></span>柯</button><button data-v="memoryView"><span class="ic"></span>回忆<span class="nav-badge" id="memoryNavBadge"></span></button><button data-v="oursView"><span class="ic"></span>我们的</button>`;
+    nav.innerHTML = `<button data-v="chatView" class="on"><span class="ic">◌</span>柯</button><button data-v="memoryView"><span class="ic">${homeIcon("memory")}</span>回忆<span class="nav-badge" id="memoryNavBadge"></span></button><button data-v="oursView"><span class="ic">⌁</span>我们的</button>`;
   }
 
   function bindNavigation(nav) {

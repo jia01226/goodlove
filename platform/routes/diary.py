@@ -34,7 +34,27 @@ def api_diary_comment():
     content = (d.get("content") or "").strip()
     if not d.get("id") or not content:
         return jsonify({"error": "need id+content"}), 400
-    return jsonify({"id": db.add_diary_comment(d["id"], content)})
+    author = (d.get("author") or "佳佳").strip()
+    if author not in ("佳佳", "柯"):
+        author = "佳佳"
+    return jsonify({"id": db.add_diary_comment(d["id"], content, author)})
+
+
+@bp.post("/api/diary/entry")
+@guard
+def api_diary_entry():
+    """佳佳或柯从日记页面亲手写下一页。"""
+    d = jbody()
+    title = (d.get("title") or "").strip()
+    content = (d.get("content") or "").strip()
+    mood = (d.get("mood") or "平静").strip()
+    author = (d.get("author") or "佳佳").strip()
+    if not title or not content:
+        return jsonify({"error": "need title+content"}), 400
+    if author not in ("佳佳", "柯"):
+        author = "佳佳"
+    did = db.add_diary(title, content, mood=mood, author=author)
+    return jsonify({"ok": True, "id": did})
 
 
 @bp.post("/api/diary/write")
