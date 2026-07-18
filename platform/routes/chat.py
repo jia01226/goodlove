@@ -14,20 +14,24 @@ from utils import guard, jbody, jget
 logger = logging.getLogger(__name__)
 bp = Blueprint("chat", __name__)
 
-# 柯代发朋友圈暗号：一行独占的 [朋友圈]正文（到行尾），多行模式逐条提取
-_MOMENT_RE = re.compile(r"^\[朋友圈\][ \t]?(.+)$", re.M)
-# 柯评论朋友圈暗号：[评论#动态id]正文——指定评论哪条动态
-_COMMENT_RE = re.compile(r"^\[评论#(\d+)\][ \t]?(.+)$", re.M)
+# 柯代发朋友圈暗号：[朋友圈]正文。前缀可为 行首/换行/|||（柯的回复用 ||| 分泡泡，暗号常跟在 ||| 后而非换行后，
+# 老正则只认换行会漏掉→暗号当普通文字漏进聊天、朋友圈里却没有）。正文到 换行 或 下一个 ||| 为止（不含竖线）。
+_MOMENT_RE = re.compile(r"(?:^|\n|\|\|\|)[ \t]*\[朋友圈\][ \t]?([^\n|]+)")
+# 柯评论朋友圈暗号：[评论#动态id]正文——指定评论哪条动态（同样兼容 ||| 前缀）
+_COMMENT_RE = re.compile(r"(?:^|\n|\|\|\|)[ \t]*\[评论#(\d+)\][ \t]?([^\n|]+)")
 
 
 def _extract_moments(text):
-    """从助手回复里提取 [朋友圈]... / [评论#id]... 暗号，并返回去掉这些行的干净文本。
+    """从助手回复里提取 [朋友圈]... / [评论#id]... 暗号，并返回去掉这些暗号的干净文本。
+    兼容 ||| 分句：暗号跟在 ||| 后也能识别；抽走后把残留的分隔符/空泡泡收拾干净。
     返回 (moments:list[str], comments:list[(mid,body)], clean_text:str)。"""
     moments = [m.strip() for m in _MOMENT_RE.findall(text) if m.strip()]
     comments = [(int(mid), body.strip()) for mid, body in _COMMENT_RE.findall(text) if body.strip()]
     clean = _COMMENT_RE.sub("", _MOMENT_RE.sub("", text))
-    # 清理暗号行留下的多余空行（连续空行压成一个，首尾空白去掉）
+    # 抽走暗号后收尾：连续 ||| 压成一个、连续空行压一个、去掉首尾的分隔符与空白（免得留个空泡泡）
+    clean = re.sub(r"\|\|\|(?:[ \t]*\|\|\|)+", "|||", clean)
     clean = re.sub(r"\n[ \t]*\n[ \t]*\n+", "\n\n", clean).strip()
+    clean = clean.strip("|").strip()
     return moments, comments, clean
 
 
