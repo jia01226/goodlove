@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS diaries (
     content TEXT NOT NULL,         -- 正文（第一人称，写给自己）
     mood TEXT DEFAULT '静',        -- 心情标签：静/烫，睡不着/私心/失而复得…
     locked INTEGER DEFAULT 0,      -- 1=锁起来的（"你猜开的"，点开才看）
+    author TEXT DEFAULT '柯',      -- 佳佳 / 柯
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
@@ -111,6 +112,7 @@ CREATE TABLE IF NOT EXISTS diary_comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     diary_id INTEGER NOT NULL,
     content TEXT NOT NULL,
+    author TEXT DEFAULT '佳佳',    -- 佳佳 / 柯
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
@@ -287,6 +289,12 @@ def init_db():
     # 旧库平滑升级：日记补 source 列（app=app里的柯自己写的 / repo=从仓库枕边日记.md 手写页导入的）
     if "source" not in dcols:
         conn.execute("ALTER TABLE diaries ADD COLUMN source TEXT DEFAULT 'app'")
+    # 日记由两个人共同书写：存量日记视为柯写的，新页面明确记录佳佳/柯。
+    if "author" not in dcols:
+        conn.execute("ALTER TABLE diaries ADD COLUMN author TEXT DEFAULT '柯'")
+    ccols = [r["name"] for r in conn.execute("PRAGMA table_info(diary_comments)").fetchall()]
+    if "author" not in ccols:
+        conn.execute("ALTER TABLE diary_comments ADD COLUMN author TEXT DEFAULT '佳佳'")
     # 默认会话（中性名字；不预置任何个人数据/纪念日/心事）
     if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=1").fetchone():
         conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'对话')")
@@ -985,16 +993,16 @@ def referenced_images():
     return {r["image"].split("/")[-1] for r in rows if r["image"]}
 
 # ---- 枕边日记 ----
-def add_diary(title, content, mood="静", locked=0, kind="diary", source="app", created_at=None):
+def add_diary(title, content, mood="静", locked=0, kind="diary", source="app", created_at=None, author="柯"):
     conn = get_db()
     if created_at:   # 导入手写页时按日记真实日期落库（否则用默认=此刻，会排序错乱、日期显示成今天）
         cur = conn.execute(
-            "INSERT INTO diaries (title,content,mood,locked,kind,source,created_at) VALUES (?,?,?,?,?,?,?)",
-            (title, content, mood, 1 if locked else 0, kind, source, created_at))
+            "INSERT INTO diaries (title,content,mood,locked,kind,source,created_at,author) VALUES (?,?,?,?,?,?,?,?)",
+            (title, content, mood, 1 if locked else 0, kind, source, created_at, author))
     else:
         cur = conn.execute(
-            "INSERT INTO diaries (title,content,mood,locked,kind,source) VALUES (?,?,?,?,?,?)",
-            (title, content, mood, 1 if locked else 0, kind, source))
+            "INSERT INTO diaries (title,content,mood,locked,kind,source,author) VALUES (?,?,?,?,?,?,?)",
+            (title, content, mood, 1 if locked else 0, kind, source, author))
     conn.commit(); did = cur.lastrowid; conn.close()
     return did
 
@@ -1023,7 +1031,8 @@ def app_written_diaries():
     conn = get_db()
     rows = conn.execute(
         "SELECT title,content,mood,locked,created_at FROM diaries "
-        "WHERE COALESCE(source,'app')='app' AND COALESCE(kind,'diary')='diary' ORDER BY id").fetchall()
+        "WHERE COALESCE(source,'app')='app' AND COALESCE(kind,'diary')='diary' "
+        "AND COALESCE(author,'柯')='柯' ORDER BY id").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -1050,15 +1059,15 @@ def delete_diary(did):
     conn.execute("DELETE FROM diaries WHERE id=?", (did,))
     conn.commit(); conn.close()
 
-def add_diary_comment(did, content):
+def add_diary_comment(did, content, author="佳佳"):
     conn = get_db()
-    cur = conn.execute("INSERT INTO diary_comments (diary_id,content) VALUES (?,?)", (did, content))
+    cur = conn.execute("INSERT INTO diary_comments (diary_id,content,author) VALUES (?,?,?)", (did, content, author))
     conn.commit(); cid = cur.lastrowid; conn.close()
     return cid
 
 def diary_comments(did):
     conn = get_db()
-    rows = conn.execute("SELECT id,content,created_at FROM diary_comments WHERE diary_id=? ORDER BY id",
+    rows = conn.execute("SELECT id,content,author,created_at FROM diary_comments WHERE diary_id=? ORDER BY id",
                         (did,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]

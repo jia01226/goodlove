@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#FBF8F1" />
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/static/icon.png" />
-<script src="/static/ui-redesign.js?v=20260718b" defer></script>
+<script src="/static/ui-redesign.js?v=20260718d" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="AI 助手" />
@@ -306,6 +306,8 @@ async function saveMood(){
 }
 async function loadMoods(){try{const r=await api("/api/moods");const arr=await r.json();
   $("#moodList").innerHTML=arr.slice(0,5).map(m=>`${fmtTime(m.created_at)}【${esc(m.mood)}】${m.note?esc(m.note):""}`).join("<br>")||"还没记过~";
+  const today=arr.find(m=>String(m.created_at||"").startsWith(todayStr()))||arr[0];
+  if($("#oursMood"))$("#oursMood").textContent=today?.mood||"未记录";
 }catch(e){}}
 async function api(path,opt){const r=await fetch(path,opt);if(r.status===401){toast("服务器仍开着访问保护，需要在部署设置里关闭");throw 0;}return r;}
 
@@ -478,7 +480,13 @@ async function delConcern(id){if(!confirm("删掉这桩心事？"))return;await 
 async function loadActivity(){try{const r=await api("/api/activity");const arr=await r.json();
   $("#actList").innerHTML=arr.length?arr.map(a=>`<div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--soft);font-size:13px"><span>📱 ${esc(a.app)}${a.detail?' · '+esc(a.detail):''}</span><span>${fmtTime(a.created_at)}</span></div>`).join(""):'<span style="color:var(--soft)">还没有记录~ 设好快捷指令就会出现</span>';
 }catch(e){}}
-async function loadAnniv(){try{const r=await api("/api/anniversaries");const arr=await r.json();$("#annivList").innerHTML=arr.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)"><span>${a.emoji||"💞"} ${esc(a.name)} <span style="color:var(--gold-deep)">第 ${a.days??"?"} 天</span><br><span style="color:var(--soft);font-size:12px">${a.date}</span></span><span onclick="delAnniv(${a.id})" style="color:var(--soft);padding:4px 8px">✕</span></div>`).join("")||'<span style="color:var(--soft)">还没有纪念日~</span>';}catch(e){}}
+async function loadAnniv(){try{const r=await api("/api/anniversaries");const arr=await r.json();$("#annivList").innerHTML=arr.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)"><span>${a.emoji||"💞"} ${esc(a.name)} <span style="color:var(--gold-deep)">第 ${a.days??"?"} 天</span><br><span style="color:var(--soft);font-size:12px">${a.date}</span></span><span onclick="delAnniv(${a.id})" style="color:var(--soft);padding:4px 8px">✕</span></div>`).join("")||'<span style="color:var(--soft)">还没有纪念日~</span>';
+  const first=arr.filter(a=>Number.isFinite(Number(a.days))).sort((a,b)=>Number(b.days)-Number(a.days))[0]||arr[0];
+  if($("#oursDays"))$("#oursDays").textContent=first?.days??"—";
+  if($("#oursSince"))$("#oursSince").textContent=first?.date?`since ${first.date} · quietly treasured`:"days together · quietly treasured";
+  if($("#oursAnniversaryName"))$("#oursAnniversaryName").textContent=first?.name||"等你记下第一个日子";
+  if($("#oursAnniversaryCount"))$("#oursAnniversaryCount").innerHTML=first?.days!=null?`${first.days}<span> 天</span>`:'—<span> 天</span>';
+}catch(e){}}
 async function addAnniv(){const n=$("#annName").value.trim(),d=$("#annDate").value;if(!n||!d){alert("名字和日期都要填哦~");return;}await api("/api/anniversaries",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:n,date:d})});$("#annName").value="";loadAnniv();}
 async function delAnniv(id){if(!confirm("删掉这个纪念日？"))return;await api("/api/anniversaries/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});loadAnniv();}
 async function loadPeriods(){try{const r=await api("/api/periods");const arr=await r.json();
@@ -490,17 +498,14 @@ async function loadPeriods(){try{const r=await api("/api/periods");const arr=awa
 }catch(e){}}
 async function addPeriod(){const d=$("#periodDate").value||todayStr();await api("/api/periods",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({start_date:d})});loadPeriods();}
 async function delPeriod(id){await api("/api/periods/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})});loadPeriods();}
-// 班次定义：名字 + 简称 + 颜色（取自用户的色卡：草莓芝士 + 枇杷莓子酒，去枇杷黄）
+// 班次定义：只保留上班班次。休息日不再作为标签显示，也不出现在排班按钮里。
 const SHIFTS=[
-  {v:"早班",s:"早班",c:"#EBD27E"},      // 淡蜜黄
-  {v:"副班",s:"副班",c:"#93AEC4"},      // 雾霾蓝
-  {v:"睡班",s:"睡班",c:"#74C5BD"},      // 空色
-  {v:"夜班",s:"夜班",c:"#8E7BAF"},      // 豆花紫
-  {v:"早班+睡班",s:"早+睡",c:"#F4B3AB"}, // 蜜桃粉
-  {v:"早班+夜班",s:"早+夜",c:"#E191A6"}, // 芍药
-  {v:"休息",s:"休息",c:"#D2697A"},      // 丹红
-  {v:"休假",s:"休假",c:"#A9D8D2"},      // 浅空色
-  {v:"疗养",s:"疗养",c:"#C3B5D8"},      // 浅豆花紫
+  {v:"早班",s:"早班",c:"#FFF8DD"},
+  {v:"副班",s:"副班",c:"#ECEBFB"},
+  {v:"睡班",s:"睡班",c:"#EDF7FF"},
+  {v:"夜班",s:"夜班",c:"#C8EFEB"},
+  {v:"早班+睡班",s:"早+睡",c:"#FBE6E6"},
+  {v:"早班+夜班",s:"早+夜",c:"#FBE6E6"},
 ];
 function shiftColor(v){const f=SHIFTS.find(x=>x.v===v);return f?f.c:"#9C8F7E";}
 // 标签文字自动深/浅，保证在任何底色上都清楚
@@ -509,6 +514,7 @@ function shiftShort(v){const f=SHIFTS.find(x=>x.v===v);return f?f.s:v;}
 let calY,calM,shiftMap={},selDate=null;
 async function loadShifts(){try{const r=await api("/api/shifts");const arr=await r.json();shiftMap={};arr.forEach(s=>shiftMap[s.date]=s.shift);}catch(e){shiftMap={};}
   if(calY==null){const d=new Date();calY=d.getFullYear();calM=d.getMonth();}
+  if($("#oursShift"))$("#oursShift").textContent=shiftMap[todayStr()]&&SHIFTS.some(s=>s.v===shiftMap[todayStr()])?shiftShort(shiftMap[todayStr()]):"未排班";
   renderCal();renderLegend();}
 function calMove(n){calM+=n;if(calM<0){calM=11;calY--;}if(calM>11){calM=0;calY++;}selDate=null;$("#shiftbar").style.display="none";renderCal();}
 function pad2(n){return String(n).padStart(2,"0");}
@@ -520,14 +526,15 @@ function renderCal(){
   for(let i=0;i<lead;i++)html+='<div class="d empty"></div>';
   for(let day=1;day<=days;day++){const ds=calY+"-"+pad2(calM+1)+"-"+pad2(day);const sh=shiftMap[ds];
     const cls="d"+(ds===t?" today":"")+(ds===selDate?" sel":"");
-    const lbl=sh?`<span class="lbl" style="background:${shiftColor(sh)};color:${textColor(shiftColor(sh))}">${shiftShort(sh)}</span>`:"";
+    const lbl=sh&&SHIFTS.some(s=>s.v===sh)?`<span class="lbl" style="background:${shiftColor(sh)};color:${textColor(shiftColor(sh))}">${shiftShort(sh)}</span>`:"";
     html+=`<div class="${cls}" onclick="pickDay('${ds}')">${day}${lbl}</div>`;}
   $("#cal").innerHTML=html;
 }
-function renderLegend(){$("#legend").innerHTML=SHIFTS.map(s=>`<span><i style="background:${s.c}"></i>${s.s}</span>`).join("");}
+function renderLegend(){$("#legend").innerHTML="";}
 function pickDay(ds){selDate=ds;renderCal();
   const bar=$("#shiftbar");
-  bar.innerHTML=`<span style="width:100%;font-size:12px;color:var(--soft)">给 ${ds} 选班次：</span>`+
+  const parts=ds.split("-");
+  bar.innerHTML=`<span style="width:100%;font-size:12px;color:var(--soft)">给 ${Number(parts[1])}月${Number(parts[2])}日排班</span>`+
     SHIFTS.map(s=>`<button style="background:${s.c};color:${textColor(s.c)};border-color:${s.c}" onclick="setShift('${s.v}')">${s.s}</button>`).join("")+
     `<button class="clr" onclick="setShift('')">清除</button>`;
   bar.style.display="flex";
