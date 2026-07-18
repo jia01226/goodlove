@@ -1,0 +1,112 @@
+:root {
+  --bg1: #faf8f5 !important;
+  --bg2: #faf8f5 !important;
+  --ink: #292527 !important;
+  --soft: #8f8985 !important;
+  --faint: #b4aeaa !important;
+  --gold: #c4aa89 !important;
+  --gold-deep: #a88c68 !important;
+  --wine: #aa747d;
+  --wine-deep: #8b6269;
+  --blush: #f3e5e7;
+  --line: rgba(93, 69, 73, .09) !important;
+  --glass: #fff !important;
+  --glass2: #f8f3f3 !important;
+  --shadow: 0 8px 30px rgba(72, 54, 58, .055) !important;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  background: #faf8f5 !important;
+  color: var(--ink) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Segoe UI", sans-serif !important;
+}
+
+body::before, body::after { display: none !important; }
+
+header, .header, .topbar {
+  min-height: 72px;
+  background: rgba(250, 248, 245, .92) !important;
+  border-color: var(--line) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(22px) saturate(1.08);
+  -webkit-backdrop-filter: blur(22px) saturate(1.08);
+}
+
+header h1, header h2, .header h1, .title {
+  color: var(--wine) !important;
+  font-family: inherit !important;
+  font-weight: 600 !important;
+  letter-spacing: .025em;
+}
+
+main, .wrap, .container { padding-top: 22px; }
+
+.card, .moment, .moment-card, .item, .para, .file, .panel, .entry {
+  background: #fff !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--shadow) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.card, .moment, .moment-card, .item, .panel, .entry { padding: 22px !important; }
+
+h1, h2, h3, strong, b { font-weight: 600; }
+p, .ct, .body, .content { font-weight: 400; line-height: 1.75; }
+.sub, .meta, small, .hint, time { color: var(--soft) !important; font-weight: 300 !important; }
+
+input, textarea, select {
+  min-height: 46px;
+  border: 1px solid var(--line) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+  font-family: inherit !important;
+}
+
+button, .btn, .chipbtn, .crow button {
+  min-height: 48px;
+  border-radius: 12px !important;
+  font-family: inherit !important;
+  transition: transform .18s ease, opacity .18s ease, background .18s ease !important;
+}
+
+.btn, button.primary, .primary {
+  border-color: var(--wine) !important;
+  background: var(--wine) !important;
+  color: #fff !important;
+  box-shadow: 0 7px 20px rgba(170, 116, 125, .16) !important;
+}
+
+.chip, .tab, .seg, .chipbtn {
+  border-color: transparent !important;
+  background: var(--glass2) !important;
+  color: var(--soft) !important;
+}
+
+.on, .active, .selected {
+  border-color: rgba(170, 116, 125, .18) !important;
+}
+
+a { color: var(--wine); }
+button:active, .btn:active, a:active { transform: scale(.985); }
+
+@keyframes quiet-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+main > *, .wrap > *, .container > * { animation: quiet-enter .22s ease both; }
+
+@media (max-width: 520px) {
+  main, .wrap, .container { padding-left: 15px !important; padding-right: 15px !important; }
+  .card, .moment, .moment-card, .item, .panel, .entry { padding: 20px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

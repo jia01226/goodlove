@@ -42,63 +42,66 @@
     const style = document.createElement("style");
     style.id = "goodlove-warm-ui";
     style.textContent = `
-      :root{--bg1:#faf7f1;--bg2:#f4eee5;--ink:#403a35;--soft:#8e8378;--gold:#c6a365;--gold-deep:#9d7843;--wine:#743e49;--wine-deep:#572d36;--blush:#d9a6a5;--line:#e7dfd4;--glass:#fffdf9;--glass2:#f8f3ec;--me:#efe3d6;--shadow:0 10px 28px rgba(86,59,43,.06)}
-      html[data-theme="sakura"],html[data-theme="mist"]{--bg1:#faf7f1;--bg2:#f4eee5;--ink:#403a35;--soft:#8e8378;--gold:#c6a365;--gold-deep:#9d7843;--wine:#743e49;--wine-deep:#572d36;--line:#e7dfd4;--glass:#fffdf9;--glass2:#f8f3ec;--me:#efe3d6;--shadow:0 10px 28px rgba(86,59,43,.06)}
-      .gl-home body{background:linear-gradient(160deg,var(--bg1),var(--bg2));}
-      .gl-home body::before,.gl-home body::after{opacity:.22;filter:blur(90px)}
-      .gl-home header{min-height:64px;padding:12px 56px 10px;background:rgba(250,247,241,.94);border-color:var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-      .gl-home header h1{font-family:"Songti SC","Noto Serif SC",serif;font-size:20px;letter-spacing:.08em;color:var(--wine)}
-      .gl-home header .sub{font-size:11px;min-height:15px}
+      :root{--bg1:#faf8f5;--bg2:#faf8f5;--ink:#292527;--soft:#8f8985;--faint:#b4aeaa;--gold:#c4aa89;--gold-deep:#a88c68;--wine:#aa747d;--wine-deep:#8b6269;--blush:#ead6d9;--line:rgba(93,69,73,.09);--glass:#ffffff;--glass2:#f8f3f3;--me:#f0dfe2;--shadow:0 8px 30px rgba(72,54,58,.055)}
+      html[data-theme="sakura"],html[data-theme="mist"]{--bg1:#faf8f5;--bg2:#faf8f5;--ink:#292527;--soft:#8f8985;--faint:#b4aeaa;--gold:#c4aa89;--gold-deep:#a88c68;--wine:#aa747d;--wine-deep:#8b6269;--line:rgba(93,69,73,.09);--glass:#ffffff;--glass2:#f8f3f3;--me:#f0dfe2;--shadow:0 8px 30px rgba(72,54,58,.055)}
+      .gl-home body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Segoe UI",sans-serif;background:var(--bg1);letter-spacing:.005em}
+      .gl-home body::before,.gl-home body::after{display:none}
+      .gl-home header{min-height:78px;padding:17px 58px 13px;background:rgba(250,248,245,.9);border-color:var(--line);backdrop-filter:blur(22px) saturate(1.12);-webkit-backdrop-filter:blur(22px) saturate(1.12)}
+      .gl-home header h1{font-family:inherit;font-size:21px;font-weight:600;line-height:1.2;letter-spacing:.055em;color:var(--wine)}
+      .gl-home header .sub{margin-top:7px;font-size:11px;font-weight:300;letter-spacing:.05em;min-height:15px;color:var(--soft)}
       .gl-home #drawerBtn{width:44px!important;height:44px!important;left:6px!important;color:var(--wine)!important;border-radius:12px!important}
       .gl-home .profile-entry{position:absolute;right:8px;top:50%;translate:0 -50%;width:44px;height:44px;border:0;background:transparent;color:var(--wine);border-radius:12px;font:600 14px/1 inherit}
       .gl-home main{min-height:0;scroll-behavior:smooth}
       .gl-home header,.gl-home footer,.gl-home nav{flex:none}
-      .gl-home .view{padding:18px 14px 24px;animation:glFade .22s ease both}
-      @keyframes glFade{from{opacity:.35;transform:translateY(7px)}to{opacity:1;transform:none}}
-      .gl-home .view-title{margin:0 2px 5px;font:600 23px/1.3 "Songti SC","Noto Serif SC",serif;color:var(--wine)}
-      .gl-home .view-sub{margin:0 2px 18px;color:var(--soft);font-size:13px;line-height:1.65}
-      .gl-home .card,.gl-home .tile{background:rgba(255,253,249,.9)!important;border:1px solid var(--line)!important;border-radius:17px!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+      .gl-home .view{padding:24px 16px 34px;animation:glFade .24s cubic-bezier(.22,.61,.36,1) both}
+      @keyframes glFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+      .gl-home .view-title{margin:0 4px 8px;font:600 25px/1.28 inherit;letter-spacing:.015em;color:var(--wine)}
+      .gl-home .view-sub{margin:0 4px 24px;color:var(--soft);font-size:13px;font-weight:300;line-height:1.75}
+      .gl-home .card,.gl-home .tile{background:var(--glass)!important;border:1px solid var(--line)!important;border-radius:18px!important;box-shadow:var(--shadow)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
       .gl-home .card h2,.gl-home .tile b{color:var(--wine)!important}
-      .gl-home .home-card{padding:17px}
-      .gl-home .chat-quick{margin-bottom:18px}
-      .gl-home .chat-quick h2{font-size:17px;margin-bottom:7px}
-      .gl-home .quick-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
-      .gl-home .quick-row button,.gl-home .memory-tab,.gl-home .soft-action{min-height:44px;border:1px solid var(--line);background:var(--glass2);color:var(--ink);border-radius:11px;padding:9px 12px;font:inherit;font-size:13px;transition:transform .16s ease,background .16s ease}
+      .gl-home .home-card{padding:24px}
+      .gl-home .chat-quick{margin-bottom:24px}
+      .gl-home .chat-quick h2{font-size:18px;font-weight:600;margin-bottom:9px}
+      .gl-home .quick-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:20px}
+      .gl-home .quick-row button,.gl-home .memory-tab,.gl-home .soft-action{min-height:48px;border:0;background:var(--glass2);color:var(--ink);border-radius:14px;padding:10px 14px;font:inherit;font-size:13px;font-weight:400;transition:transform .18s ease,background .22s ease,box-shadow .22s ease}
       .gl-home button:active,.gl-home a:active{transform:translateY(1px);opacity:.82}
-      .gl-home .bubble{box-shadow:none;border-color:var(--line);backdrop-filter:none;-webkit-backdrop-filter:none}
+      .gl-home .bubble{padding:12px 16px;box-shadow:0 4px 18px rgba(54,37,42,.035);border-color:var(--line);backdrop-filter:none;-webkit-backdrop-filter:none}
+      .gl-home .me .bubble{background:var(--me);color:#493b3e}
       .gl-home .gude .bubble{background:var(--glass)}
-      .gl-home footer{background:rgba(250,247,241,.95);border-color:var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+      .gl-home .msg.me+.msg.me .tag,.gl-home .msg.gude+.msg.gude .tag{visibility:hidden;height:0;margin:0;overflow:hidden}
+      .gl-home footer{background:rgba(250,248,245,.94);border-color:var(--line);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
       .gl-home textarea,.gl-home input,.gl-home select{background:var(--glass);border-color:var(--line);border-radius:11px}
-      .gl-home .send{box-shadow:none;background:var(--wine)}
+      .gl-home .send{box-shadow:0 7px 20px rgba(170,116,125,.18);background:var(--wine)}
       .gl-home .model-row{display:flex;align-items:center;gap:8px;max-width:680px;margin:0 auto 8px;color:var(--soft);font-size:11px}.gl-home .model-row label{white-space:nowrap}.gl-home .model-row select{width:auto;min-width:0;min-height:36px;margin:0;padding:6px 30px 6px 10px;border-radius:10px;background:var(--glass2);color:var(--wine);font-size:12px}
-      .gl-home nav{flex:none;z-index:7;gap:6px;padding:7px 14px calc(7px + env(safe-area-inset-bottom));background:rgba(250,247,241,.97);border-color:var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+      .gl-home nav{flex:none;z-index:7;gap:8px;padding:8px 16px calc(8px + env(safe-area-inset-bottom));background:rgba(250,248,245,.96);border-color:var(--line);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
       .gl-home nav button{position:relative;min-height:48px;border-radius:12px;padding:6px 0;color:var(--soft);transition:background .16s ease,color .16s ease}
-      .gl-home nav button.on{color:var(--wine);background:#f1e9df}
+      .gl-home nav button.on{color:var(--wine);background:#fff;box-shadow:0 5px 18px rgba(54,37,42,.055)}
       .gl-home nav button .ic{display:grid;place-items:center;height:20px;margin-bottom:2px;font-size:0}
       .gl-home nav button .ic::before{font-size:18px;line-height:1}
       .gl-home nav button[data-v="chatView"] .ic::before{content:"◌"}
       .gl-home nav button[data-v="memoryView"] .ic::before{content:"◇"}
       .gl-home nav button[data-v="oursView"] .ic::before{content:"⌁"}
       .gl-home .nav-badge{position:absolute;top:3px;left:calc(50% + 8px);display:none;min-width:17px;height:17px;padding:0 5px;border-radius:999px;background:var(--wine);color:#fff;font:600 10px/17px inherit}
-      .gl-home .memory-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:16px;padding:4px;border:1px solid var(--line);border-radius:13px;background:rgba(255,253,249,.68)}
-      .gl-home .memory-tab{position:relative;min-height:42px;padding:7px 4px;border:0;background:transparent;color:var(--soft);font-size:12px}
-      .gl-home .memory-tab.on{background:#eee4da;color:var(--wine);font-weight:600}
+      .gl-home .memory-tabs{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:22px;padding:4px;border:0;border-radius:15px;background:#f1ece9;overflow:hidden}
+      .gl-home .memory-tabs::before{content:"";position:absolute;z-index:0;left:4px;top:4px;width:calc((100% - 8px)/4);height:calc(100% - 8px);border-radius:12px;background:#fff;box-shadow:0 4px 16px rgba(54,37,42,.06);transform:translateX(0);transition:transform .28s cubic-bezier(.22,.61,.36,1)}
+      .gl-home .memory-tabs[data-active="library"]::before{transform:translateX(100%)}.gl-home .memory-tabs[data-active="timeline"]::before{transform:translateX(200%)}.gl-home .memory-tabs[data-active="stars"]::before{transform:translateX(300%)}
+      .gl-home .memory-tab{z-index:1;position:relative;min-height:44px;padding:7px 4px;border:0;background:transparent;color:var(--soft);font-size:12px}
+      .gl-home .memory-tab.on{background:transparent;color:var(--wine);font-weight:600;box-shadow:none}
       .gl-home .memory-panel{display:none}.gl-home .memory-panel.active{display:block;animation:glFade .2s ease}
       .gl-home .pending-hero{display:flex;align-items:center;gap:14px;padding:18px;text-decoration:none;color:inherit}
-      .gl-home .pending-mark{display:grid;place-items:center;flex:0 0 46px;height:46px;border-radius:15px;background:#efe3d6;color:var(--wine);font:600 19px/1 serif}
+      .gl-home .pending-mark{display:grid;place-items:center;flex:0 0 46px;height:46px;border-radius:15px;background:#f3e5e7;color:var(--wine);font:600 19px/1 serif}
       .gl-home .pending-hero strong{display:block;color:var(--wine);margin-bottom:4px}.gl-home .pending-hero span{color:var(--soft);font-size:12.5px;line-height:1.55}
       .gl-home .memory-toolbar{display:flex;gap:8px;margin-bottom:12px}.gl-home .memory-toolbar input{margin:0;min-height:44px}.gl-home .memory-toolbar button{flex:0 0 auto}
       .gl-home .memory-grid{display:grid;gap:10px}
-      .gl-home .memory-card{width:100%;text-align:left;padding:15px 16px;color:inherit}
+      .gl-home .memory-card{width:100%;text-align:left;padding:21px 22px;color:inherit}
       .gl-home .memory-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
       .gl-home .memory-kind{color:var(--wine);font-size:12px;font-weight:600}.gl-home .memory-date{color:var(--soft);font-size:11px}
       .gl-home .memory-card h3{margin:0 0 6px;font-size:15px;font-weight:600;color:var(--ink);line-height:1.45}
       .gl-home .memory-understanding{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin:0;color:#71675f;font-size:13px;line-height:1.65}
       .gl-home .memory-source{margin-top:9px;color:var(--soft);font-size:11px}
       .gl-home .memory-empty{padding:36px 18px;text-align:center;color:var(--soft);line-height:1.8}
-      .gl-home .timeline-list{position:relative;padding-left:19px}.gl-home .timeline-list::before{content:"";position:absolute;left:5px;top:8px;bottom:12px;width:1px;background:#d8c7b7}
-      .gl-home .timeline-item{position:relative;margin-bottom:10px}.gl-home .timeline-item::before{content:"";position:absolute;left:-18px;top:21px;width:9px;height:9px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 4px var(--bg1)}
-      .gl-home .star-shell{overflow:hidden;padding:0;background:var(--wine-deep)!important;border-color:#754b53!important;color:#fff}
+      .gl-home .timeline-list{display:grid;gap:0;padding:0}.gl-home .story-entry{position:relative;padding:0 0 30px 36px}.gl-home .story-entry:not(:last-child)::before{content:"";position:absolute;left:8px;top:26px;bottom:0;width:1px;background:linear-gradient(var(--gold),rgba(185,166,129,.08))}.gl-home .story-dot{position:absolute;left:2px;top:5px;width:13px;height:13px;border:3px solid var(--bg1);border-radius:50%;background:var(--gold);box-shadow:0 0 0 1px rgba(159,139,103,.26)}.gl-home .story-date{display:block;margin-bottom:9px;color:var(--soft);font-size:11px;font-weight:300;letter-spacing:.08em}.gl-home .story-card{width:100%;padding:21px 22px;text-align:left;color:inherit}.gl-home .story-card p{margin:0 0 12px;font:400 15px/1.8 "Songti SC","Noto Serif SC",serif;color:var(--ink)}.gl-home .story-card small{color:var(--soft);font-size:11px;font-weight:300}
+      .gl-home .star-shell{overflow:hidden;padding:0;background:#716968!important;border-color:#7c7270!important;color:#fff}
       .gl-home .star-copy{padding:17px 17px 0}.gl-home .star-copy h3{margin:0 0 4px;font-family:"Songti SC",serif;font-size:18px}.gl-home .star-copy p{margin:0;color:#dbc9c4;font-size:12px;line-height:1.6}
       .gl-home .star-map{--star-scale:1;position:relative;height:330px;transform:scale(var(--star-scale));transform-origin:center;transition:transform .2s ease}
       .gl-home .star-map::before,.gl-home .star-map::after{content:"";position:absolute;inset:18% 20%;border:1px solid rgba(238,216,194,.13);border-radius:50%;transform:rotate(12deg)}
@@ -108,7 +111,10 @@
       .gl-home .star-node.center{left:50%;top:48%;translate:-50% -50%;min-width:96px;min-height:58px;background:#f4e7d5;color:var(--wine-deep);font-weight:700;border-radius:18px}.gl-home .star-node.center::before{background:var(--gold)}
       .gl-home .star-node.relation{left:8%;top:16%}.gl-home .star-node.safety{right:8%;top:18%}.gl-home .star-node.habit{left:10%;bottom:17%}.gl-home .star-node.experience{right:7%;bottom:16%}.gl-home .star-node.future{left:43%;top:7%}.gl-home .star-node.work{left:42%;bottom:5%}
       .gl-home .star-controls{display:grid;grid-template-columns:auto 1fr;gap:9px 12px;align-items:center;padding:0 17px 17px;color:#ddcbc5;font-size:11px}.gl-home .star-controls input{height:30px;margin:0;padding:0;background:transparent;accent-color:#d4ad75}
-      .gl-home .tile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}.gl-home .tile{display:block;min-height:92px;padding:14px;text-decoration:none;color:inherit}.gl-home .tile b{display:block;margin-bottom:6px;font-size:15px}.gl-home .tile span{display:block;color:var(--soft);font-size:12px;line-height:1.55}
+      .gl-home .ours-hero{position:relative;overflow:hidden;margin-bottom:18px;padding:30px 25px 28px;border:1px solid rgba(170,116,125,.11);border-radius:18px;background:linear-gradient(145deg,#fff 0%,#fff 62%,#f7ecee 100%);box-shadow:var(--shadow)}
+      .gl-home .ours-hero::after{content:"⌂";position:absolute;right:22px;top:13px;color:rgba(170,116,125,.1);font:300 76px/1 Georgia,serif}.gl-home .ours-date{display:block;margin-bottom:20px;color:var(--gold-deep);font-size:11px;font-weight:400;letter-spacing:.12em}.gl-home .ours-hero h3{margin:0 0 9px;color:var(--ink);font-size:22px;font-weight:600;letter-spacing:-.02em}.gl-home .ours-hero p{max-width:78%;margin:0;color:var(--soft);font-size:13px;font-weight:300;line-height:1.75}
+      .gl-home .life-links{display:grid;gap:10px;margin:10px 0 24px}.gl-home .life-link{position:relative;display:block;padding:19px 52px 19px 21px;border:1px solid var(--line);border-radius:17px;background:#fff;color:inherit;text-decoration:none;box-shadow:0 6px 22px rgba(72,54,58,.035);transition:transform .18s ease,box-shadow .18s ease}.gl-home .life-link::after{content:"›";position:absolute;right:21px;top:50%;translate:0 -50%;color:var(--gold-deep);font:300 25px/1 Georgia,serif}.gl-home .life-link.featured{padding-top:24px;padding-bottom:24px;background:linear-gradient(135deg,#fff 0%,#fbf3f4 100%)}.gl-home .life-link b{display:block;margin-bottom:6px;color:var(--ink);font-size:15px;font-weight:600}.gl-home .life-link span{display:block;color:var(--soft);font-size:12px;font-weight:300;line-height:1.65}.gl-home .life-link:active{transform:scale(.985)}
+      .gl-home #oursView>.card{padding:23px 24px}.gl-home #oursView>.card h2{font-size:15px}.gl-home #oursView>.card:has(#moodNote),.gl-home #oursView>.card:has(#annivList){margin-bottom:14px}.gl-home #oursView>.card:has(#moodNote) h2,.gl-home #oursView>.card:has(#annivList) h2{color:var(--wine)}
       .gl-home .section-label{margin:20px 3px 9px;color:var(--soft);font-size:12px;letter-spacing:.08em}
       .gl-home #oursView>a>.card{background:var(--glass)!important;color:var(--ink)!important}
       .gl-home #oursView>a>.card .ct{color:var(--soft)!important}
@@ -120,7 +126,7 @@
       .gl-home .detail-section{padding:14px 0;border-top:1px solid var(--line)}.gl-home .detail-section h3{margin:0 0 7px;color:var(--wine);font-size:13px}.gl-home .detail-section p{margin:0;color:var(--ink);font-size:14px;line-height:1.7;white-space:pre-wrap}.gl-home .detail-section small{color:var(--soft);line-height:1.6}
       .gl-home .accuracy-actions,.gl-home .sheet-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}.gl-home .accuracy-actions button,.gl-home .sheet-actions button{min-height:44px;padding:8px;border:1px solid var(--line);border-radius:11px;background:var(--glass2);color:var(--ink);font:12px/1.35 inherit}.gl-home .accuracy-actions button:first-child{background:var(--wine);color:#fff;border-color:var(--wine)}
       .gl-home .recall-card{padding:13px 14px;margin-bottom:8px;border:1px solid var(--line);border-radius:16px;background:var(--glass2)}.gl-home .recall-card strong{display:block;margin-bottom:4px;color:var(--wine);font-size:13px}.gl-home .recall-card p{margin:0;color:var(--ink);font-size:13px;line-height:1.6}
-      @media(max-width:380px){.gl-home .quick-row,.gl-home .tile-grid{grid-template-columns:1fr}.gl-home .memory-tabs{gap:2px}.gl-home .memory-tab{font-size:11px}.gl-home .accuracy-actions{grid-template-columns:1fr}}
+      @media(max-width:380px){.gl-home .quick-row{grid-template-columns:1fr}.gl-home .memory-tabs{gap:2px}.gl-home .memory-tab{font-size:11px}.gl-home .accuracy-actions{grid-template-columns:1fr}.gl-home .ours-hero{padding:26px 21px}.gl-home .ours-hero p{max-width:88%}}
       @media(min-width:760px){.gl-home .view{padding-top:26px}.gl-home .memory-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.gl-home .chat-quick{max-width:560px;margin-left:auto;margin-right:auto}}
       @media(prefers-reduced-motion:reduce){.gl-home *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
     `;
@@ -189,7 +195,7 @@
     view.innerHTML = `
       <h2 class="view-title">回忆</h2>
       <div class="view-sub">不是一座数据库，是柯认真收好、也愿意和你一起改正的那些事。</div>
-      <div class="memory-tabs" role="tablist" aria-label="回忆中心">
+      <div class="memory-tabs" role="tablist" aria-label="回忆中心" data-active="pending">
         <button class="memory-tab on" data-memory-tab="pending">待确认<span class="nav-badge memory-tab-badge"></span></button>
         <button class="memory-tab" data-memory-tab="library">卡片库</button>
         <button class="memory-tab" data-memory-tab="timeline">时间线</button>
@@ -212,16 +218,25 @@
 
   function buildOursView(view) {
     view.id = "oursView";
-    view.insertAdjacentHTML("afterbegin", `<h2 class="view-title">我们的</h2><div class="view-sub">一起走过的日子、留下的内容，还有以后想慢慢完成的事。</div><div class="tile-grid"><a class="tile" href="/moments"><b>共同日常</b><span>照片、片刻和你来我往的生活。</span></a><a class="tile" href="/diary"><b>枕边日记</b><span>一页一页，收好那些没说完的话。</span></a><a class="tile" href="/reading"><b>一起读</b><span>在同一段文字旁边留下彼此。</span></a><a class="tile" href="/capsule"><b>时间胶囊</b><span>把今天郑重地交给未来。</span></a></div><div class="section-label">我们的日子</div>`);
     $$(":scope > a", view).forEach((link) => {
-      const text = link.textContent || "";
-      if (/朋友圈|枕边日记|一起读|时间胶囊/.test(text)) link.remove();
+      if (["/moments", "/diary", "/reading", "/capsule"].includes(link.getAttribute("href"))) link.remove();
     });
+    const today = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(new Date());
+    view.insertAdjacentHTML("afterbegin", `<h2 class="view-title">我们的</h2><div class="view-sub">不是功能清单，是我们正在一起过的生活。</div><section class="ours-hero"><span class="ours-date">今天 · ${escapeHtml(today)}</span><h3>回到我们的小家</h3><p>日子不用盛大，能被彼此认真记住，就已经很好。</p></section><div class="life-anchor"></div><div class="section-label">共同生活</div><div class="life-links"><a class="life-link featured" href="/moments"><b>共同日常</b><span>照片、片刻，还有你来我往的小事。</span></a><a class="life-link" href="/diary"><b>枕边日记</b><span>把那些没说完的话，一页一页收好。</span></a><a class="life-link" href="/reading"><b>一起读</b><span>在同一段文字旁边，留下彼此。</span></a><a class="life-link" href="/capsule"><b>时间胶囊</b><span>把今天郑重地交给未来。</span></a></div><div class="section-label care-label">照顾我们的日子</div>`);
+    const lifeAnchor = $(".life-anchor", view);
+    const mood = $$(".card", view).find((card) => card.querySelector("#moodNote"));
+    if (mood) {
+      const title = mood.querySelector("h2");
+      if (title) title.textContent = "今日心情";
+      view.insertBefore(mood, lifeAnchor);
+    }
     const anniversary = $$(".card", view).find((card) => (card.textContent || "").includes("纪念日"));
     if (anniversary) {
-      anniversary.querySelector("h2").textContent = "纪念日";
-      view.insertBefore(anniversary, $(".section-label", view).nextSibling);
+      const title = anniversary.querySelector("h2");
+      if (title) title.textContent = "纪念日";
+      view.insertBefore(anniversary, lifeAnchor);
     }
+    lifeAnchor?.remove();
     const protocol = $$(":scope > a", view).find((a) => (a.textContent || "").includes("每日功课"));
     if (protocol) protocol.querySelector(".card").removeAttribute("style");
     const activity = $$(".card", view).find((card) => (card.textContent || "").includes("应用使用记录"));
@@ -275,6 +290,8 @@
   }
 
   function openMemoryPanel(name) {
+    const tabs = $(".memory-tabs");
+    if (tabs) tabs.dataset.active = name;
     $$(".memory-tab").forEach((tab) => tab.classList.toggle("on", tab.dataset.memoryTab === name));
     $$(".memory-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.memoryPanel === name));
     if (name === "library" || name === "timeline") loadMemoryCards($("#memorySearch")?.value?.trim() || "");
@@ -330,7 +347,7 @@
       list.innerHTML = `<div class="card memory-empty">时间线还空着，新的回忆会慢慢落在这里。</div>`;
       return;
     }
-    list.innerHTML = rows.slice().sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))).map((card) => `<button class="card memory-card timeline-item" data-memory-id="${Number(card.id)}" data-memory-store="${escapeHtml(card.store || "l2")}"><span class="memory-card-top"><span class="memory-kind">${escapeHtml(formatDate(card.created_at))}</span><span class="memory-date">${escapeHtml(categoryName(card))}</span></span><h3>${escapeHtml(card.content || "一段回忆")}</h3><p class="memory-understanding">${escapeHtml(sourceNames[card.source] || "你们一起留下的")}</p></button>`).join("");
+    list.innerHTML = rows.slice().sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))).map((card) => `<article class="story-entry"><span class="story-dot" aria-hidden="true"></span><time class="story-date">${escapeHtml(storyDate(card.created_at))} · ${escapeHtml(categoryName(card))}</time><button class="card story-card" data-memory-id="${Number(card.id)}" data-memory-store="${escapeHtml(card.store || "l2")}"><p>“${escapeHtml(card.content || "一段回忆")}”</p><small>柯记住了 · ${escapeHtml(sourceNames[card.source] || "你们一起留下的")}</small></button></article>`).join("");
     $$("[data-memory-id]", list).forEach((button) => button.addEventListener("click", () => openMemoryDetail(button.dataset.memoryId, button.dataset.memoryStore)));
   }
 
@@ -398,6 +415,18 @@
   function formatDate(value) {
     const match = String(value || "").match(/(\d{4})-(\d{2})-(\d{2})/);
     return match ? `${Number(match[2])}月${Number(match[3])}日` : "很久以前";
+  }
+
+  function storyDate(value) {
+    const match = String(value || "").match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return "很久以前";
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const days = Math.round((start - date) / 86400000);
+    if (days === 0) return "今天";
+    if (days === 1) return "昨天";
+    return `${Number(match[2])}月${Number(match[3])}日`;
   }
 
   function escapeHtml(value) {
