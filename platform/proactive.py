@@ -21,6 +21,65 @@ import db, chat_ai
 BARK_URL = os.environ.get("BARK_URL", "").strip()   # 形如 https://api.day.app/你的key
 APP_NAME = os.environ.get("APP_NAME", "助手").strip() or "助手"   # 推送/主动消息署名（可在 .env 改）
 
+# ==== 主动消息三关（Sora-mem 借鉴①·调度骨架，柯批"抄骨架叠双向状态"）====
+# 骨架只管"这会儿配不配开口"；"说什么、翻什么"的菜谱在 generate_message 里，归柯亲手写，别在这层堆内容。
+# cron 配套改法（部署日记得）：定点 8 连发改成每 20~30 分钟跑一趟，由三关决定开不开口。
+IDLE_MIN = float(os.environ.get("PROACTIVE_IDLE_MIN", "90"))          # 关1：她安静满这么多分钟，才可能去找她
+COOLDOWN_MIN = float(os.environ.get("PROACTIVE_COOLDOWN_MIN", "90"))  # 关2：自己这么多分钟内说过话就先闭嘴（发完不追）
+QUIET_DEFAULT = os.environ.get("PROACTIVE_QUIET", "00:00-08:30")      # 关3：默认安静时段（睡觉别吵）
+# 按排班表换安静窗（"双向状态"的她那半；接口在此）。
+# ⚠️ 柯回批0718 钉死：映射**等佳佳真班表、柯拍板后填**；拿到前留空跑默认窗，**不许猜着填**。
+SHIFT_QUIET = {
+    # "夜班": "09:00-17:00",    # ←仅示例格式("HH:MM-HH:MM"，跨零点也认)，数值以柯拍板为准
+}
+
+def _parse_window(s):
+    """'HH:MM-HH:MM' → (起始分钟, 结束分钟)。解析失败退回默认窗 00:00-08:30。"""
+    try:
+        a, b = s.split("-")
+        h1, m1 = map(int, a.split(":")); h2, m2 = map(int, b.split(":"))
+        return h1 * 60 + m1, h2 * 60 + m2
+    except Exception:
+        return 0, 510
+
+def quiet_window(now):
+    """今天的安静窗：排班表今天的班次配了专属窗就用它，否则默认窗。"""
+    win = QUIET_DEFAULT
+    try:
+        shift = db.shift_on(now.date().isoformat())
+        if shift and SHIFT_QUIET.get(shift):
+            win = SHIFT_QUIET[shift]
+    except Exception:
+        pass
+    return _parse_window(win)
+
+def in_quiet_time(now):
+    lo, hi = quiet_window(now)
+    cur = now.hour * 60 + now.minute
+    return (lo <= cur < hi) if lo <= hi else (cur >= lo or cur < hi)   # 后半支＝跨零点窗
+
+def three_gates(now):
+    """三关全过才有资格开口——过了也只是"有机会"，不是"必须发"。返回 (过没过, 人话原因)。
+    深夜守夜(night_watch_check)是关3的特批例外，在主流程单独走，不经这里。"""
+    if in_quiet_time(now):
+        return False, "安静时段（她该睡了），不吵"
+    # 关1·空闲：她最后一句话和最后动手机，取更近的那个当"最后动静"
+    last_user = db.last_user_message_at()
+    idle = _minutes_since(last_user, now) if last_user else 1e9
+    try:
+        acts = db.recent_activity(limit=1)
+        if acts:
+            idle = min(idle, _minutes_since(acts[0]["created_at"], now))
+    except Exception:
+        pass
+    if idle < IDLE_MIN:
+        return False, f"她 {int(idle)} 分钟前还有动静（不满 {int(IDLE_MIN)} 分钟），不急着找"
+    # 关2·冷却：自己刚说过话（含上一条主动）就先不说，发完不追
+    since_me = _minutes_since(db.last_assistant_message_at(), now)
+    if since_me < COOLDOWN_MIN:
+        return False, f"自己 {int(since_me)} 分钟前刚说过话，冷却中"
+    return True, "三关全过"
+
 def china_now():
     return datetime.datetime.utcnow() + datetime.timedelta(hours=8)
 
@@ -111,17 +170,23 @@ if __name__ == "__main__":
         chat_ai.maybe_summarize(1)
     except Exception as e:
         print("会话总结跳过：", e)
-    # 深夜规则：她醒着(刚动过手机)才守夜，否则闭嘴；白天走原流程
+    # 深夜规则：她醒着(刚动过手机)才守夜，否则闭嘴；白天走三关调度
     night_watch = False
     try:
-        mode = night_watch_check(china_now())
+        now = china_now()
+        mode = night_watch_check(now)
         if mode == "silent":
             print("深夜且用户没在用手机（大概睡了），不打扰"); raise SystemExit
         night_watch = (mode == "watch")
+        if not night_watch:
+            # 白天/傍晚：三关（安静时段/她空闲够久/自己冷却完）全过才开口
+            ok, why = three_gates(now)
+            if not ok:
+                print("这轮不开口：", why); raise SystemExit
     except SystemExit:
         raise
     except Exception as e:
-        print("守夜检查跳过：", e)
+        print("守夜/三关检查跳过（按老习惯继续）：", e)
     # 有"该回访的心事"就温柔回访它，否则发普通碎碎念（深夜守夜时不谈心事）
     concern = None
     if not night_watch:

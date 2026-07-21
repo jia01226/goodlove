@@ -342,6 +342,7 @@ function showMsgMenu(el,mid,role){
     if(text)mkBtn("复制",()=>copyMessageText(text));
     mkBtn("重新回复",()=>promptFromMessage("请重新回复你刚才那句话。"));
     mkBtn("继续说下去",()=>promptFromMessage("继续说下去，我在听。"));
+    mkBtn("删掉这条",()=>delMsg(mid),"var(--soft)");   // 走样/报错的话也能删（报错气泡靠这个清）
   }else{
     if(text)mkBtn("复制",()=>copyMessageText(text));
     mkBtn("删掉这条",()=>delMsg(mid),"var(--soft)");

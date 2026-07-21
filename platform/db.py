@@ -806,6 +806,35 @@ def last_assistant_message_at(session_id=1):
     conn.close()
     return str(row["created_at"]) if row else ""
 
+def last_user_message_at(session_id=1):
+    """她最后一次说话的时间（主动消息三关之"空闲多久"用）。"""
+    conn = get_db()
+    row = conn.execute("SELECT created_at FROM chat_messages WHERE session_id=? AND author='user' "
+                       "ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+    conn.close()
+    return str(row["created_at"]) if row else ""
+
+def shift_on(date):
+    """某天(YYYY-MM-DD)排的班次，没排返回空串。主动消息拿它定安静时段。"""
+    conn = get_db()
+    row = conn.execute("SELECT shift FROM shifts WHERE date=?", (date,)).fetchone()
+    conn.close()
+    return str(row["shift"]) if row else ""
+
+def recent_surface_counts(hours=48, max_logs=300):
+    """最近 hours 小时注入日志里每张卡的出场次数：{'12': 3, 'p5': 1}（p 开头=私密卡）。
+    surface_count 冷却用：出场越多、检索降权越狠，防同一批记忆霸屏。"""
+    rows = _rows("SELECT mem_ids FROM mem_injection_log "
+                 "WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT ?",
+                 (f'-{int(hours)} hours', int(max_logs)))
+    counts = {}
+    for r in rows:
+        for tok in (r.get("mem_ids") or "").split(","):
+            tok = tok.strip("[] '\"")
+            if tok:
+                counts[tok] = counts.get(tok, 0) + 1
+    return counts
+
 # ---- 心事引擎 ----
 def all_concerns(status=None):
     conn = get_db()

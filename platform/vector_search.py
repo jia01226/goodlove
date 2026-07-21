@@ -29,8 +29,21 @@ EMBED_API_KEY = os.environ.get("EMBED_API_KEY", _API_KEY)
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "text-embedding-3-small").strip()
 LOCAL_MODEL_NAME = os.environ.get("LOCAL_EMBED_MODEL", "BAAI/bge-small-zh-v1.5").strip()
 
-# 检索权重：语义占多少，词面占多少
+# 检索权重：语义占多少，词面占多少（降级词面路径仍用）
 SEM_WEIGHT = float(os.environ.get("VEC_SEM_WEIGHT", "0.7"))
+
+# 混合打分（Sora-mem 借鉴③，柯批"抄融合打分"）：两道各自打分取强者，双命中再加一点
+LEX_FACTOR = float(os.environ.get("VEC_LEX_FACTOR", "0.92"))        # 关键词道的折价系数
+BOTH_BONUS = float(os.environ.get("VEC_BOTH_BONUS", "0.06"))        # 语义+词面双命中的奖励
+SEM_HIT = float(os.environ.get("VEC_SEM_HIT", "0.50"))              # 语义算"命中"的线（余弦相似度）
+LEX_HIT = float(os.environ.get("VEC_LEX_HIT", "0.15"))              # 词面算"命中"的线
+# 去重合并（同一件事两张近似卡只留分高的）：向量余弦≥DEDUP_SIM（=1-0.24距离）或词面重叠≥DEDUP_OVERLAP 判重
+DEDUP_SIM = float(os.environ.get("VEC_DEDUP_SIM", "0.76"))
+DEDUP_OVERLAP = float(os.environ.get("VEC_DEDUP_OVERLAP", "0.72"))
+# surface_count 冷却（二期池第1条，柯批）：近 COOL_HOURS 小时出场越多、降权越狠，防同一批记忆霸屏。
+# 常驻卡(ALWAYS_TYPES)不走本检索、不受冷却影响——该常驻的照常驻。
+COOL_W = float(os.environ.get("VEC_COOL_W", "0.15"))
+COOL_HOURS = float(os.environ.get("VEC_COOL_HOURS", "48"))
 
 _backend_ready = None      # None=未检测, True/False=检测结果
 _local_model = None        # 本地模型懒加载缓存
@@ -198,6 +211,52 @@ def _weight(meta, ref_id):
         pass
     return 1.0 + RECENCY_W * rec + boost
 
+def _surface_cooling(kind):
+    """surface_count 冷却系数表 {ref_id: 系数≤1}。出场 n 次 → 1/(1+COOL_W·n)。
+    日志读不到就返回空表＝不冷却（绝不因记账影响检索）。"""
+    try:
+        counts = _db.recent_surface_counts(hours=COOL_HOURS)
+    except Exception:
+        return {}
+    out = {}
+    for tok, n in counts.items():
+        is_priv = tok.startswith("p")
+        if is_priv != (kind == "private"):
+            continue                      # 命名空间各算各的，p 前缀不串号
+        try:
+            out[int(tok[1:] if is_priv else tok)] = 1.0 / (1.0 + COOL_W * n)
+        except ValueError:
+            pass
+    return out
+
+
+def _overlap(a_toks, b_toks):
+    """词面重叠度：交集 / 较短的一方（短卡整段被长卡包含也算重）。"""
+    if not a_toks or not b_toks:
+        return 0.0
+    return len(a_toks & b_toks) / min(len(a_toks), len(b_toks))
+
+
+def _dedup_top(scored, k):
+    """从高分往下收，近似卡（向量余弦≥DEDUP_SIM 或 词面重叠≥DEDUP_OVERLAP）只留先到的高分那张，收满 k 张为止。
+    候选项上的 _v/_t 是比对用的临时字段，出门前摘掉。"""
+    kept = []
+    for c in scored:
+        dup = False
+        for K in kept:
+            if c.get("_v") is not None and K.get("_v") is not None and _dot(c["_v"], K["_v"]) >= DEDUP_SIM:
+                dup = True; break
+            if _overlap(c["_t"], K["_t"]) >= DEDUP_OVERLAP:
+                dup = True; break
+        if not dup:
+            kept.append(c)
+            if len(kept) >= k:
+                break
+    for c in kept:
+        c.pop("_v", None); c.pop("_t", None)
+    return kept
+
+
 def _degraded_rows(kind):
     """语义后端不可用时的词面检索数据源——按命名空间取，且在查询层就守住 scope：
     kind='private'→只私密卡（no_model 已排除）；kind='post'→单聊允许集（active、非 no_model、非 repo-only）。
@@ -227,24 +286,31 @@ def search(query, k=8, kind="post"):
             print("[vector] 查询编码失败，降级词面：", e)
             use_sem = False
 
+    cooling = _surface_cooling(kind)   # surface_count 冷却：近期高频出场的卡降权
     scored = []
     if use_sem:
         for r in rows:
-            sem = _dot(q_vec, _unpack(r["vec"], r["dim"]))
+            v = _unpack(r["vec"], r["dim"])
+            sem = _dot(q_vec, v)
             lex = _lexical_score(q_tokens, r["text"])
-            base = SEM_WEIGHT * sem + (1 - SEM_WEIGHT) * lex
+            # 融合打分（Sora-mem）：取两道的强者（词面打折），双双过线再奖励一点
+            base = max(sem, lex * LEX_FACTOR)
+            if sem >= SEM_HIT and lex >= LEX_HIT:
+                base += BOTH_BONUS
             scored.append({"ref_id": r["ref_id"], "text": r["text"],
-                           "score": base * _weight(meta, r["ref_id"])})
+                           "score": base * _weight(meta, r["ref_id"]) * cooling.get(r["ref_id"], 1.0),
+                           "_v": v, "_t": _tokens(r["text"])})
     else:
         # 降级：对本命名空间的当前允许集做词面检索（scope 在数据源就守住了）
         for p in _degraded_rows(kind):
             lex = _lexical_score(q_tokens, p["content"])
             if lex > 0:
                 scored.append({"ref_id": p["id"], "text": p["content"],
-                               "score": lex * _weight(meta, p["id"])})
+                               "score": lex * _weight(meta, p["id"]) * cooling.get(p["id"], 1.0),
+                               "_v": None, "_t": _tokens(p["content"])})
 
     scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored[:k]
+    return _dedup_top(scored, k)   # 近似卡合并去重后取 top-k
 
 
 if __name__ == "__main__":
