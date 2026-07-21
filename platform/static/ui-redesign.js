@@ -72,7 +72,7 @@
       .gl-home footer{background:rgba(250,248,245,.94);border-color:var(--line);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
       .gl-home textarea,.gl-home input,.gl-home select{background:var(--glass);border-color:var(--line);border-radius:11px}
       .gl-home .send{box-shadow:0 7px 20px rgba(170,116,125,.18);background:var(--wine)}
-      .gl-home .model-row{display:flex;align-items:center;gap:8px;max-width:680px;margin:0 auto 8px;color:var(--soft);font-size:11px}.gl-home .model-row label{white-space:nowrap}.gl-home .model-row select{width:auto;min-width:0;min-height:36px;margin:0;padding:6px 30px 6px 10px;border-radius:10px;background:var(--glass2);color:var(--wine);font-size:12px}
+      .gl-home .model-row{display:flex;align-items:center;gap:9px;max-width:680px;margin:0 auto 8px;padding:5px 6px 5px 11px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.78);color:var(--soft);font-size:11px}.gl-home .model-row label{display:flex;align-items:center;gap:6px;white-space:nowrap}.gl-home .model-row label::before{content:"✦";color:var(--gold);font-size:10px}.gl-home .model-row select{flex:1;width:100%;min-width:0;min-height:38px;margin:0;padding:6px 30px 6px 10px;border:0!important;border-radius:9px!important;background:var(--glass2)!important;color:var(--wine)!important;font-size:12px;font-weight:500}.gl-home .model-row select:disabled{opacity:.7}
       .gl-home nav{flex:none;z-index:7;gap:8px;padding:8px 16px calc(8px + env(safe-area-inset-bottom));background:rgba(250,248,245,.96);border-color:var(--line);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
       .gl-home nav button{position:relative;min-height:48px;border-radius:12px;padding:6px 0;color:var(--soft);transition:background .16s ease,color .16s ease}
       .gl-home nav button.on{color:var(--wine);background:#fff;box-shadow:0 5px 18px rgba(54,37,42,.055)}
@@ -180,26 +180,52 @@
     if (!footer || !composer || $("#modelPicker", footer)) return;
     const row = document.createElement("div");
     row.className = "model-row";
-    row.innerHTML = `<label for="modelPicker">这次让谁来回答</label><select id="modelPicker" aria-label="选择聊天模型"><option value="">正在读取可用模型…</option></select>`;
+    row.innerHTML = `<label for="modelPicker">模型</label><select id="modelPicker" aria-label="选择聊天模型"><option value="">正在读取可用模型…</option></select>`;
     footer.insertBefore(row, composer);
     const picker = $("#modelPicker", row);
-    picker.addEventListener("change", () => window.setChatModel?.(picker.value));
-    try {
-      const data = await (await window.api("/api/models")).json();
-      const models = Array.from(new Set([data.default, ...(Array.isArray(data.models) ? data.models : [])].filter(Boolean)));
-      picker.innerHTML = models.map((model) => `<option value="${escapeHtml(model)}" title="${escapeHtml(model)}">${escapeHtml(modelLabel(model, model === data.default))}</option>`).join("");
+    const fallbackModels = ["anthropic/claude-opus-4.8", "anthropic/claude-sonnet-4.5", "anthropic/claude-haiku-4.5"];
+    const fillModels = (models, defaultModel = "", options = []) => {
+      const allowed = Array.from(new Set([defaultModel, ...models].filter(Boolean)));
+      const providers = new Map(options.map((option) => [option.id, option.provider]));
+      const groups = { claude: [], gpt: [], other: [] };
+      allowed.forEach((model) => {
+        const provider = providers.get(model) || (String(model).toLowerCase().includes("gpt") ? "gpt" : "claude");
+        (groups[provider] || groups.other).push(model);
+      });
+      const optionHtml = (model) => `<option value="${escapeHtml(model)}" title="${escapeHtml(model)}">${escapeHtml(modelLabel(model, model === defaultModel))}</option>`;
+      picker.innerHTML = [
+        groups.claude.length ? `<optgroup label="Claude · 柯">${groups.claude.map(optionHtml).join("")}</optgroup>` : "",
+        groups.gpt.length ? `<optgroup label="GPT · 柯">${groups.gpt.map(optionHtml).join("")}</optgroup>` : "",
+        groups.other.length ? `<optgroup label="其他模型">${groups.other.map(optionHtml).join("")}</optgroup>` : ""
+      ].join("");
       const remembered = window.selectedModel || "";
-      picker.value = models.includes(remembered) ? remembered : (data.default || models[0] || "");
+      picker.value = allowed.includes(remembered) ? remembered : (defaultModel || allowed[0] || "");
+      picker.disabled = !allowed.length;
       window.setChatModel?.(picker.value);
+    };
+    picker.addEventListener("change", () => {
+      window.setChatModel?.(picker.value);
+      window.toast?.(`已切换为 ${modelLabel(picker.value, false)}`);
+    });
+    try {
+      const response = await window.api("/api/models");
+      if (!response.ok) throw new Error("models unavailable");
+      const data = await response.json();
+      fillModels(Array.isArray(data.models) ? data.models : [], data.default || "", Array.isArray(data.options) ? data.options : []);
     } catch (_) {
-      picker.innerHTML = `<option value="">使用默认模型</option>`;
-      picker.disabled = true;
+      // 静态预览或短暂离线时仍可看见并保留选择；后端收到请求后还会再次做白名单校验。
+      fillModels(fallbackModels, "anthropic/claude-sonnet-4.5");
     }
   }
 
   function modelLabel(model, isDefault) {
     const raw = String(model || "");
-    const short = raw.split("/").pop().replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const id = raw.split("/").pop().toLowerCase();
+    let short = raw.split("/").pop().replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+    if (id.includes("opus")) short = "Claude Opus · 深度";
+    else if (id.includes("sonnet")) short = "Claude Sonnet · 均衡";
+    else if (id.includes("haiku")) short = "Claude Haiku · 快速";
+    else if (id.startsWith("gpt")) short = `${id.replace(/^gpt[-_]?/, "GPT ").replace(/[-_]/g, " ")} · 第二个大脑`;
     return `${short || "默认模型"}${isDefault ? " · 默认" : ""}`;
   }
 

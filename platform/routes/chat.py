@@ -79,7 +79,7 @@ def api_chat():
     bedroom = bool(data.get("bedroom"))                # 卧室模式（bedroom.py 只在服务器本地）
     if bedroom:
         logger.info("[bedroom] 前端的卧室开关已送达后端")
-    model = chat_ai.resolve_model(data.get("model"))   # 前端可选模型，白名单外回落默认
+    model, gateway_base, gateway_key = chat_ai.resolve_gateway(data.get("model"))
     db.add_message("user", text, session_id=sid, image=image, msg_type=("image" if image else "text"))
     history = db.recent_messages(session_id=sid)
     posts = db.retrieve_l2("single")   # 单聊记忆：active 的 L2 卡，已排除 no_model/已忘/已归档/repo-only
@@ -94,7 +94,8 @@ def api_chat():
 
     def gen():
         acc = ""
-        for piece in chat_ai.stream_chat(history, posts, model=model, bedroom=bedroom):
+        for piece in chat_ai.stream_chat(history, posts, model=model, bedroom=bedroom,
+                                         api_base=gateway_base, api_key=gateway_key):
             if isinstance(piece, tuple):
                 if piece[0] == USAGE_TAG:
                     usage = piece[1] or {}
@@ -131,8 +132,8 @@ def api_chat():
 @bp.get("/api/models")
 @guard
 def api_models():
-    """给前端模型选择器（知言的 UI 调这个）：可选模型（白名单）+ 当前默认。"""
-    return jsonify({"models": chat_ai.MODEL_WHITELIST, "default": chat_ai.MODEL})
+    """给 PWA 模型选择器：允许的模型、默认模型和 Claude/GPT 分组。"""
+    return jsonify(chat_ai.available_models())
 
 
 @bp.get("/api/messages")

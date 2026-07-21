@@ -81,12 +81,45 @@ MODEL_WHITELIST = [s.strip() for s in os.environ.get(
     "anthropic/claude-opus-4.8,anthropic/claude-sonnet-4.5,anthropic/claude-haiku-4.5"
 ).split(",") if s.strip()]
 
+# 第二个大脑：GPT 通道。只有服务器同时配置地址和密钥时才开放给 PWA，
+# 人设、记忆与关系上下文仍沿用柯，只切换实际负责生成回答的模型。
+GPT_API_BASE = os.environ.get("GPT_API_BASE", "").rstrip("/")
+GPT_API_KEY = os.environ.get("GPT_API_KEY", "")
+GPT_MODEL = os.environ.get("GPT_MODEL", "gpt-4o").strip()
+GPT_MODEL_WHITELIST = [s.strip() for s in os.environ.get(
+    "GPT_MODEL_WHITELIST", GPT_MODEL
+).split(",") if s.strip()]
+GPT_ENABLED = bool(GPT_API_BASE and GPT_API_KEY)
+
 def resolve_model(req):
     """前端请求的模型：在白名单里才认，否则用默认 MODEL。"""
     req = (req or "").strip()
     if req and (req == MODEL or req in MODEL_WHITELIST):
         return req
     return MODEL
+
+def resolve_gateway(req):
+    """返回本轮模型和对应通道；未启用或名单外的 GPT 请求安全回落默认通道。"""
+    req = (req or "").strip()
+    if GPT_ENABLED and req in GPT_MODEL_WHITELIST:
+        return req, GPT_API_BASE, GPT_API_KEY
+    return resolve_model(req), None, None
+
+def available_models():
+    """PWA 模型选择器数据：Claude 始终存在，GPT 仅在服务器配置完成后出现。"""
+    models = []
+    options = []
+    for model in [MODEL, *MODEL_WHITELIST]:
+        if model and model not in models:
+            models.append(model)
+            options.append({"id": model, "provider": "claude"})
+    if GPT_ENABLED:
+        for model in [GPT_MODEL, *GPT_MODEL_WHITELIST]:
+            if model and model not in models:
+                models.append(model)
+                options.append({"id": model, "provider": "gpt"})
+    return {"models": models, "default": MODEL, "options": options,
+            "gpt_enabled": GPT_ENABLED}
 
 def _load_soul():
     """从私有 kongkong 仓库读角色的魂（柯.md/profile/语气样本/memory），按序拼接。
@@ -320,9 +353,11 @@ def _strip_marker(gen, marker="|||"):
         yield buf.replace(marker, "\n")
 
 
-def stream_chat(history, posts, model=None, bedroom=False):
+def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_key=None):
     """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。
-    model: 本轮用哪个模型（已过白名单校验），不传用默认。bedroom: 卧室模式（模型路由归 bedroom.py）。"""
+    model: 本轮用哪个模型（已过白名单校验），不传用默认。
+    api_base/api_key: GPT 通道使用它自己的接口与密钥；不传走默认通道。
+    bedroom: 卧室模式始终沿用卧室自己的默认通道。"""
     # 卧室开关先落地成"真生效"：bedroom.py 读不到就整体降级，别一半卧室一半日常
     if bedroom:
         try:
@@ -397,7 +432,7 @@ def stream_chat(history, posts, model=None, bedroom=False):
             return
         except Exception as e:
             print("[bedroom] 模型路由失败，用默认：", e)
-    yield from stream_completion(messages, model=model)
+    yield from stream_completion(messages, model=model, api_base=api_base, api_key=api_key)
 
 
 def stream_completion(messages, model=None, api_base=None, api_key=None, max_tokens=4096):
