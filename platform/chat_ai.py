@@ -426,6 +426,85 @@ def _strip_marker(gen, marker="|||"):
         yield buf.replace(marker, "\n")
 
 
+_BEDROOM_LAZY_SKIPS = (
+    "不知过了多久", "不知道过了多久", "不知道持续了多久",
+    "一次又一次", "直到一切结束", "直到一切都结束",
+)
+
+
+def _bedroom_output_issues(text, latest_user_text=""):
+    """找出不能直接下发的亲密回复硬伤；只做事实/节奏校验，不审查私密文风。"""
+    text = (text or "").strip()
+    latest_user_text = latest_user_text or ""
+    issues = [f"lazy_skip:{phrase}" for phrase in _BEDROOM_LAZY_SKIPS if phrase in text]
+    if "|||" in text:
+        issues.append("split_marker")
+
+    # 只有佳佳明确报告已经发生，模型才可以把高潮写成既成事实。
+    user_confirmed = bool(__import__("re").search(
+        r"我.{0,8}(?:已经|刚刚|真的|忍不住|还是)?高潮(?:了|过)", latest_user_text))
+    if not user_confirmed:
+        for match in __import__("re").finditer(r"高潮", text):
+            around = text[max(0, match.start() - 22):match.end() + 8]
+            # 命令、限制、假设或否定不是“擅自宣布已经发生”。
+            if any(word in around for word in (
+                    "不许", "不能", "不准", "别", "没有", "还没", "没让", "忍住",
+                    "允许", "想高潮", "要高潮", "离高潮", "是否高潮", "能不能高潮")):
+                continue
+            if __import__("re").search(
+                    r"(?:你|她).{0,18}高潮(?:了|起来|迭起|来临|爆发)|"
+                    r"高潮(?:猛地|终于|瞬间)?(?:爆发|来临)|被.{0,10}(?:送上|逼到|弄到)高潮",
+                    around):
+                issues.append("invented_climax")
+                break
+    return issues
+
+
+def _buffered_bedroom_completion(messages, model, api_base, api_key, max_tokens, latest_user_text):
+    """亲密回复先在服务器验收；有硬伤就让同一模型重写一次，坏草稿不下发。"""
+    first_text, first_meta = [], []
+    for piece in stream_completion(
+            messages, model=model, api_base=api_base, api_key=api_key, max_tokens=max_tokens):
+        if isinstance(piece, tuple):
+            first_meta.append(piece)
+        else:
+            first_text.append(piece)
+    draft = "".join(first_text).replace("|||", "\n").strip()
+    issues = _bedroom_output_issues(draft, latest_user_text)
+    for meta in first_meta:
+        yield meta
+    if not issues:
+        if draft:
+            yield draft
+        return
+
+    print(f"[bedroom-quality] 首稿未通过：{','.join(issues)}；同模型重写", flush=True)
+    correction = (
+        "上一版草稿没有通过服务器质量检查，绝不能把它展示给佳佳。请从当前节拍重新写一版，只输出正文。\n"
+        "硬性修正：不得替佳佳宣布高潮或编造她没说过的反应；不得用模糊时间跳跃或一句话快进整场；"
+        "可长可短但必须有实质推进，并停在需要她真实反馈的位置。\n"
+        f"命中的问题：{', '.join(issues)}"
+    )
+    retry_messages = list(messages) + [{"role": "system", "content": correction}]
+    second_text, second_meta = [], []
+    for piece in stream_completion(
+            retry_messages, model=model, api_base=api_base, api_key=api_key, max_tokens=max_tokens):
+        if isinstance(piece, tuple):
+            second_meta.append(piece)
+        else:
+            second_text.append(piece)
+    rewritten = "".join(second_text).replace("|||", "\n").strip()
+    second_issues = _bedroom_output_issues(rewritten, latest_user_text)
+    for meta in second_meta:
+        yield meta
+    if second_issues:
+        print(f"[bedroom-quality] 重写仍未通过：{','.join(second_issues)}；正文已拦截", flush=True)
+        yield "这条不算。刚才那一步，重新告诉我你现在真实是什么反应。"
+        return
+    if rewritten:
+        yield rewritten
+
+
 def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_key=None, sid=1):
     """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。
     model: 本轮用哪个模型（已过白名单校验），不传用默认。
@@ -517,10 +596,10 @@ def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_ke
                 bd_model = model or MODEL
                 bd_base = api_base
                 bd_key = api_key
-            # 输出再过一道滤网：就算模型手滑吐了 |||，也在后端换成换行，前端永远见不到拆条符
-            yield from _strip_marker(stream_completion(
+            # 亲密回复先完整缓冲并做事实/节奏验收；坏草稿不会流到前端或聊天记录。
+            yield from _buffered_bedroom_completion(
                 messages, model=bd_model, api_base=bd_base, api_key=bd_key,
-                max_tokens=_bd.max_tokens()))
+                max_tokens=_bd.max_tokens(), latest_user_text=query or "")
             return
         except Exception as e:
             print("[bedroom] 模型路由失败，用默认：", e)

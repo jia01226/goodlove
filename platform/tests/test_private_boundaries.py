@@ -110,6 +110,9 @@ class PrivateBoundaryTests(unittest.TestCase):
             chat_ai._now_context = lambda: "测试当下"
             try:
                 prompt = chat_ai.build_system_prompt([], query="测试", bedroom=True)
+                self.assertIn("invented_climax", chat_ai._bedroom_output_issues("你终于高潮了。", "我没有说高潮"))
+                self.assertEqual(chat_ai._bedroom_output_issues("不许你高潮。", "我没有说高潮"), [])
+                self.assertTrue(chat_ai._bedroom_output_issues("不知过了多久，一切结束。", ""))
             finally:
                 chat_ai._load_persona = original_persona
                 chat_ai._private_block = original_private
