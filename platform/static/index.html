@@ -6,7 +6,8 @@
 <meta name="theme-color" content="#FBF8F1" />
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/static/icon.png" />
-<script src="/static/ui-redesign.js?v=20260722b" defer></script>
+<script src="/static/app-core.js?v=20260722c"></script>
+<script src="/static/ui-redesign.js?v=20260722c" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="AI 助手" />
@@ -309,7 +310,7 @@ async function loadMoods(){try{const r=await api("/api/moods");const arr=await r
   const today=arr.find(m=>String(m.created_at||"").startsWith(todayStr()))||arr[0];
   if($("#oursMood"))$("#oursMood").textContent=today?.mood||"未记录";
 }catch(e){}}
-async function api(path,opt){const r=await fetch(path,opt);if(r.status===401){toast("服务器仍开着访问保护，需要在部署设置里关闭");throw 0;}return r;}
+async function api(path,opt){const r=window.Goodlove?await Goodlove.api(path,opt):await fetch(path,opt);if(r.status===401){toast("服务器仍开着访问保护，需要在部署设置里关闭");throw 0;}return r;}
 
 function nowHM(){const d=new Date();return pad2(d.getHours())+":"+pad2(d.getMinutes());}
 function fmtTime(s){if(!s)return"";const m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);if(!m)return"";const d=m[1]+"-"+m[2]+"-"+m[3];return (d===todayStr()?"":m[2]+"/"+m[3]+" ")+m[4]+":"+m[5];}

@@ -6,6 +6,7 @@ from flask import Blueprint, Response, jsonify, request, send_from_directory
 
 import db
 import chat_ai
+import moments_ai
 from constants import (STATIC_DIR, MAIN_SESSION, SESSION_NAME_MAXLEN,
                        DEFAULT_SESSION_NAME, USAGE_TAG, THINK_TAG,
                        SSE_CONTENT_TYPE, SSE_HEADERS)
@@ -35,24 +36,25 @@ def _extract_moments(text):
     return moments, comments, clean
 
 
-def _moments_context():
-    """把最近几条朋友圈动态+评论拼成一段，注入柯的上下文——让他"看见"朋友圈、能评论回应。
-    没有动态返回空串。"""
+def _moments_context(query):
+    """只注入与本轮话题相关的近期动态，避免每次聊天都反复念朋友圈旧事。"""
     try:
-        rows = db.list_moments(limit=8)
+        rows = moments_ai.related_moments(
+            query, limit=2, max_age_days=14, allow_explicit_reference=True)
     except Exception:
         return ""
     if not rows:
         return ""
-    lines = ["\n\n===== 朋友圈近况（你和佳佳的动态墙；想回应就用暗号，见下）====="]
+    lines = ["\n\n===== 与本轮内容真正相关的近期朋友圈（最多两条）====="]
     for m in rows:
         who = "你" if m.get("author") == "ke" else "佳佳"
         lines.append(f"· 动态#{m['id']}（{who}发）：{(m.get('content') or '').strip()[:120]}" + ("（附图）" if m.get("image") else ""))
-        for c in (m.get("comments") or []):
+        for c in (m.get("comments") or [])[-3:]:
             cwho = "你" if c.get("author") == "ke" else "佳佳"
             lines.append(f"    └ {cwho}评论：{(c.get('content') or '').strip()[:80]}")
-    lines.append("【怎么回应朋友圈】想给某条评论/回复，另起一行写 [评论#动态id]你的话（如 [评论#3]这张拍得真好看）；"
-                 "想自己发条动态用 [朋友圈]内容。别硬回、有话才说，一次别刷太多。")
+    lines.append("这些内容只是联想候选：只有自然相关才回应，不要复述、不要反复提旧事。"
+                 "想给某条动态回复，另起一行写 [评论#动态id]你的话；想自己发动态用 [朋友圈]内容。"
+                 "没有必要就完全不使用暗号。")
     return "\n".join(lines)
 
 
@@ -90,7 +92,7 @@ def api_chat():
     mctx = ""
     # 让柯"看见"朋友圈：把近况拼到最后一条用户消息末尾（只发给模型、不入库、前端不显示）
     if history and sid == MAIN_SESSION:
-        mctx = _moments_context()
+        mctx = _moments_context(text)
         if mctx:
             for m in reversed(history):
                 if m["author"] == "user":
@@ -127,7 +129,9 @@ def api_chat():
             moments_out, comments_out, clean_acc = _extract_moments(acc)
             for body in moments_out:
                 try:
-                    db.add_moment(author="ke", content=body)
+                    db.add_moment(
+                        author="ke", content=body, reply_status="done",
+                        context_note=("聊天中有感而发。佳佳刚才说：" + text[:300]))
                     posted_moment = True
                 except Exception as e:
                     logger.warning("柯代发朋友圈失败：%s", e)

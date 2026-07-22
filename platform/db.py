@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     author TEXT NOT NULL,          -- 'user' / 'assistant'
     content TEXT NOT NULL,
     msg_type TEXT DEFAULT 'text',
+    is_push INTEGER DEFAULT 0,     -- 影子推送=1；仍是正式聊天消息，只用于每日上限统计
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
@@ -183,7 +184,14 @@ CREATE TABLE IF NOT EXISTS moments (
     content TEXT DEFAULT '',
     image TEXT DEFAULT '',         -- 图片URL（复用 /api/upload 返回的 /uploads/xxx），可空
     visibility TEXT DEFAULT 'private',  -- private=只你俩看（默认） / public=公开（预留，本期不做公开页）
-    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+    context_note TEXT DEFAULT '',  -- 仅模型可见：发这条时的聊天背景/情绪底色
+    image_description TEXT DEFAULT '', -- 图片第一次看过后的文字描述，后续评论不重复传图
+    reply_due_at DATETIME,
+    reply_status TEXT DEFAULT 'done',  -- pending / processing / done
+    ai_liked INTEGER DEFAULT 0,
+    user_liked INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT (datetime('now','+8 hours')),
+    updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
 -- 朋友圈评论
@@ -192,7 +200,10 @@ CREATE TABLE IF NOT EXISTS moment_comments (
     moment_id INTEGER NOT NULL,
     author TEXT NOT NULL,          -- 'user' / 'ke'
     content TEXT NOT NULL,
-    created_at DATETIME DEFAULT (datetime('now','+8 hours'))
+    reply_due_at DATETIME,
+    reply_status TEXT DEFAULT 'none', -- none / pending / processing / done
+    created_at DATETIME DEFAULT (datetime('now','+8 hours')),
+    updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
 -- 私密记忆库 L1.5B（柯钉死的"物理分家"：独立表，群聊代码路径根本 SELECT 不到它）
@@ -278,6 +289,8 @@ def init_db():
     mcols = [r["name"] for r in conn.execute("PRAGMA table_info(chat_messages)").fetchall()]
     if "image" not in mcols:
         conn.execute("ALTER TABLE chat_messages ADD COLUMN image TEXT DEFAULT ''")
+    if "is_push" not in mcols:
+        conn.execute("ALTER TABLE chat_messages ADD COLUMN is_push INTEGER DEFAULT 0")
     # 旧库平滑升级：会话表补 summarized_until（会话总结用：已折叠到摘要的最大消息 id）
     scols = [r["name"] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()]
     if "summarized_until" not in scols:
@@ -295,6 +308,33 @@ def init_db():
     ccols = [r["name"] for r in conn.execute("PRAGMA table_info(diary_comments)").fetchall()]
     if "author" not in ccols:
         conn.execute("ALTER TABLE diary_comments ADD COLUMN author TEXT DEFAULT '佳佳'")
+    # 朋友圈从基础留言板升级成双向生活墙：存量内容保持 done，不会部署后突然批量触发 AI 回复。
+    moment_cols = [r["name"] for r in conn.execute("PRAGMA table_info(moments)").fetchall()]
+    _moment_cols = {
+        "context_note": "TEXT DEFAULT ''",
+        "image_description": "TEXT DEFAULT ''",
+        "reply_due_at": "DATETIME",
+        "reply_status": "TEXT DEFAULT 'done'",
+        "ai_liked": "INTEGER DEFAULT 0",
+        "user_liked": "INTEGER DEFAULT 0",
+        "updated_at": "DATETIME DEFAULT ''",
+    }
+    for _c, _decl in _moment_cols.items():
+        if _c not in moment_cols:
+            conn.execute(f"ALTER TABLE moments ADD COLUMN {_c} {_decl}")
+    conn.execute("UPDATE moments SET reply_status='done' WHERE reply_status IS NULL OR reply_status=''")
+    conn.execute("UPDATE moments SET updated_at=created_at WHERE updated_at IS NULL OR updated_at=''")
+    comment_cols = [r["name"] for r in conn.execute("PRAGMA table_info(moment_comments)").fetchall()]
+    _comment_cols = {
+        "reply_due_at": "DATETIME",
+        "reply_status": "TEXT DEFAULT 'none'",
+        "updated_at": "DATETIME DEFAULT ''",
+    }
+    for _c, _decl in _comment_cols.items():
+        if _c not in comment_cols:
+            conn.execute(f"ALTER TABLE moment_comments ADD COLUMN {_c} {_decl}")
+    conn.execute("UPDATE moment_comments SET reply_status='none' WHERE reply_status IS NULL OR reply_status=''")
+    conn.execute("UPDATE moment_comments SET updated_at=created_at WHERE updated_at IS NULL OR updated_at=''")
     # 默认会话（中性名字；不预置任何个人数据/纪念日/心事）
     if not conn.execute("SELECT 1 FROM chat_sessions WHERE id=1").fetchone():
         conn.execute("INSERT INTO chat_sessions (id,name) VALUES (1,'对话')")
@@ -305,10 +345,10 @@ def init_db():
     conn.close()
 
 # ---- 便捷读写 ----
-def add_message(author, content, session_id=1, msg_type="text", image=""):
+def add_message(author, content, session_id=1, msg_type="text", image="", is_push=False):
     conn = get_db()
-    conn.execute("INSERT INTO chat_messages (session_id,author,content,msg_type,image) VALUES (?,?,?,?,?)",
-                 (session_id, author, content, msg_type, image))
+    conn.execute("INSERT INTO chat_messages (session_id,author,content,msg_type,image,is_push) VALUES (?,?,?,?,?,?)",
+                 (session_id, author, content, msg_type, image, 1 if is_push else 0))
     conn.commit(); conn.close()
 
 def recent_messages(session_id=1, limit=40):
@@ -881,33 +921,75 @@ def delete_concern(cid):
     conn.commit(); conn.close()
 
 # ---- 朋友圈（moments）----
-def add_moment(author, content, image="", visibility="private"):
+def add_moment(author, content, image="", visibility="private", context_note="",
+               image_description="", reply_due_at=None, reply_status=None):
     if visibility not in ("private", "public"):
         visibility = "private"
+    if reply_status not in ("pending", "processing", "done"):
+        reply_status = "pending" if author == "user" else "done"
     conn = get_db()
-    cur = conn.execute("INSERT INTO moments (author,content,image,visibility) VALUES (?,?,?,?)",
-                       (author, content, image, visibility))
+    cur = conn.execute(
+        "INSERT INTO moments (author,content,image,visibility,context_note,image_description,"
+        "reply_due_at,reply_status) VALUES (?,?,?,?,?,?,?,?)",
+        (author, content, image, visibility, context_note, image_description,
+         reply_due_at, reply_status))
     conn.commit(); mid = cur.lastrowid; conn.close()
     return mid
+
+def _moment_comments(conn, moment_ids):
+    if not moment_ids:
+        return {}
+    slots = ",".join("?" for _ in moment_ids)
+    rows = conn.execute(
+        f"SELECT id,moment_id,author,content,reply_status,created_at "
+        f"FROM moment_comments WHERE moment_id IN ({slots}) ORDER BY id", tuple(moment_ids)).fetchall()
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row["moment_id"], []).append(dict(row))
+    return grouped
 
 def list_moments(limit=50):
     """动态列表（最新在前）；每条附 comments 键=该动态的评论列表（时间正序）。"""
     conn = get_db()
     rows = conn.execute(
-        "SELECT id,author,content,image,visibility,created_at FROM moments ORDER BY id DESC LIMIT ?",
+        "SELECT id,author,content,image,visibility,reply_status,"
+        "ai_liked,user_liked,created_at FROM moments ORDER BY id DESC LIMIT ?",
         (limit,)).fetchall()
-    crows = conn.execute(
-        "SELECT id,moment_id,author,content,created_at FROM moment_comments ORDER BY id").fetchall()
+    by_moment = _moment_comments(conn, [r["id"] for r in rows])
     conn.close()
-    by_moment = {}
-    for c in crows:
-        by_moment.setdefault(c["moment_id"], []).append(dict(c))
     out = []
-    for r in rows:
-        d = dict(r)
-        d["comments"] = by_moment.get(d["id"], [])
-        out.append(d)
+    for row in rows:
+        item = dict(row)
+        item["comments"] = by_moment.get(item["id"], [])
+        out.append(item)
     return out
+
+def get_moment(mid):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM moments WHERE id=?", (mid,)).fetchone()
+    if not row:
+        conn.close(); return None
+    item = dict(row)
+    item["comments"] = _moment_comments(conn, [item["id"]]).get(item["id"], [])
+    conn.close()
+    return item
+
+def edit_moment(mid, content, author="user"):
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE moments SET content=?,updated_at=datetime('now','+8 hours') WHERE id=? AND author=?",
+        (content, mid, author))
+    conn.commit(); changed = cur.rowcount > 0; conn.close()
+    return changed
+
+def set_moment_like(mid, liked, actor="user"):
+    column = "user_liked" if actor == "user" else "ai_liked"
+    conn = get_db()
+    cur = conn.execute(
+        f"UPDATE moments SET {column}=?,updated_at=datetime('now','+8 hours') WHERE id=?",
+        (1 if liked else 0, mid))
+    conn.commit(); changed = cur.rowcount > 0; conn.close()
+    return changed
 
 def delete_moment(mid):
     """删动态并连带删它的评论。"""
@@ -916,13 +998,16 @@ def delete_moment(mid):
     conn.execute("DELETE FROM moments WHERE id=?", (mid,))
     conn.commit(); conn.close()
 
-def add_comment(moment_id, author, content):
+def add_comment(moment_id, author, content, reply_due_at=None, reply_status="none"):
     """给某条动态加评论；动态不存在则不插入、返回 None。"""
+    if reply_status not in ("none", "pending", "processing", "done"):
+        reply_status = "none"
     conn = get_db()
     if not conn.execute("SELECT 1 FROM moments WHERE id=?", (moment_id,)).fetchone():
         conn.close(); return None
-    cur = conn.execute("INSERT INTO moment_comments (moment_id,author,content) VALUES (?,?,?)",
-                       (moment_id, author, content))
+    cur = conn.execute(
+        "INSERT INTO moment_comments (moment_id,author,content,reply_due_at,reply_status) "
+        "VALUES (?,?,?,?,?)", (moment_id, author, content, reply_due_at, reply_status))
     conn.commit(); cid = cur.lastrowid; conn.close()
     return cid
 
@@ -935,10 +1020,85 @@ def edit_comment(cid, content, author="user"):
     """改一条朋友圈评论；界面只能改佳佳自己发出的评论。"""
     conn = get_db()
     cur = conn.execute(
-        "UPDATE moment_comments SET content=? WHERE id=? AND author=?",
-        (content, cid, author))
+        "UPDATE moment_comments SET content=?,updated_at=datetime('now','+8 hours') "
+        "WHERE id=? AND author=?", (content, cid, author))
     conn.commit(); changed = cur.rowcount > 0; conn.close()
     return changed
+
+def claim_due_moment(now_text, stale_before):
+    """跨 gunicorn worker 原子认领一条到期动态，避免快速刷新生成重复回复。"""
+    conn = get_db()
+    conn.execute("BEGIN IMMEDIATE")
+    row = conn.execute(
+        "SELECT * FROM moments WHERE author='user' AND reply_due_at IS NOT NULL AND "
+        "((reply_status='pending' AND reply_due_at<=?) OR "
+        "(reply_status='processing' AND updated_at<=?)) ORDER BY reply_due_at,id LIMIT 1",
+        (now_text, stale_before)).fetchone()
+    if row:
+        conn.execute("UPDATE moments SET reply_status='processing',updated_at=? WHERE id=?",
+                     (now_text, row["id"]))
+    conn.commit(); conn.close()
+    return dict(row) if row else None
+
+def claim_due_comment(now_text, stale_before):
+    """原子认领佳佳留下、等待柯回复的一条评论。"""
+    conn = get_db()
+    conn.execute("BEGIN IMMEDIATE")
+    row = conn.execute(
+        "SELECT * FROM moment_comments WHERE author='user' AND reply_due_at IS NOT NULL AND "
+        "((reply_status='pending' AND reply_due_at<=?) OR "
+        "(reply_status='processing' AND updated_at<=?)) ORDER BY reply_due_at,id LIMIT 1",
+        (now_text, stale_before)).fetchone()
+    if row:
+        conn.execute("UPDATE moment_comments SET reply_status='processing',updated_at=? WHERE id=?",
+                     (now_text, row["id"]))
+    conn.commit(); conn.close()
+    return dict(row) if row else None
+
+def finish_moment_reply(mid, liked=False, comment="", image_description=""):
+    """初次路过的点赞/评论与状态更新放进同一事务，避免只落一半。"""
+    conn = get_db(); conn.execute("BEGIN IMMEDIATE")
+    conn.execute(
+        "UPDATE moments SET ai_liked=?,image_description=CASE WHEN ?<>'' THEN ? ELSE image_description END,"
+        "reply_status='done',updated_at=datetime('now','+8 hours') WHERE id=?",
+        (1 if liked else 0, image_description, image_description, mid))
+    if comment:
+        conn.execute(
+            "INSERT INTO moment_comments (moment_id,author,content,reply_status) VALUES (?,'ke',?,'none')",
+            (mid, comment))
+    conn.commit(); conn.close()
+
+def finish_comment_reply(comment_id, content):
+    conn = get_db(); conn.execute("BEGIN IMMEDIATE")
+    row = conn.execute("SELECT moment_id FROM moment_comments WHERE id=?", (comment_id,)).fetchone()
+    if row and content:
+        conn.execute(
+            "INSERT INTO moment_comments (moment_id,author,content,reply_status) VALUES (?,'ke',?,'none')",
+            (row["moment_id"], content))
+    conn.execute(
+        "UPDATE moment_comments SET reply_status='done',updated_at=datetime('now','+8 hours') WHERE id=?",
+        (comment_id,))
+    conn.commit(); conn.close()
+
+def retry_moment(mid, next_due):
+    conn = get_db()
+    conn.execute("UPDATE moments SET reply_status='pending',reply_due_at=?,updated_at=datetime('now','+8 hours') WHERE id=?",
+                 (next_due, mid))
+    conn.commit(); conn.close()
+
+def retry_comment(cid, next_due):
+    conn = get_db()
+    conn.execute("UPDATE moment_comments SET reply_status='pending',reply_due_at=?,updated_at=datetime('now','+8 hours') WHERE id=?",
+                 (next_due, cid))
+    conn.commit(); conn.close()
+
+def push_count_on_date(date, session_id=1):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) n FROM chat_messages WHERE session_id=? AND is_push=1 AND date(created_at)=?",
+        (session_id, date)).fetchone()
+    conn.close()
+    return int(row["n"] or 0)
 
 # ---- 时间胶囊 ----
 def add_capsule(title, content, open_at, image=""):

@@ -1,0 +1,12 @@
+[Unit]
+Description=Goodlove relationship heartbeat and due Moments replies
+After=network-online.target gude.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/-1/platform
+EnvironmentFile=/root/-1/platform/.env
+ExecStart=/root/-1/platform/venv/bin/python /root/-1/platform/proactive.py
+

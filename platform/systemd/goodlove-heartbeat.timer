@@ -1,0 +1,12 @@
+[Unit]
+Description=Check whether Ke should speak or reply to Moments
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=2min
+RandomizedDelaySec=20s
+Persistent=true
+Unit=goodlove-heartbeat.service
+
+[Install]
+WantedBy=timers.target
