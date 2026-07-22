@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     content TEXT NOT NULL,
     msg_type TEXT DEFAULT 'text',
     is_push INTEGER DEFAULT 0,     -- 影子推送=1；仍是正式聊天消息，只用于每日上限统计
+    model TEXT DEFAULT '',         -- 生成这条消息时实际选择的模型（只做归因，不参与人格判断）
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT DEFAULT '和助手的悄悄话',
     summary TEXT DEFAULT '',
+    summary_version TEXT DEFAULT '', -- 摘要属于哪一版人格；人格变化后旧摘要不再注入
     created_at DATETIME DEFAULT (datetime('now','+8 hours')),
     updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
@@ -103,7 +105,8 @@ CREATE TABLE IF NOT EXISTS diaries (
     title TEXT NOT NULL,           -- 标题，如"她咬在我手上的那一圈"
     content TEXT NOT NULL,         -- 正文（第一人称，写给自己）
     mood TEXT DEFAULT '静',        -- 心情标签：静/烫，睡不着/私心/失而复得…
-    locked INTEGER DEFAULT 0,      -- 1=锁起来的（"你猜开的"，点开才看）
+    locked INTEGER DEFAULT 0,      -- 1=柯锁起来；必须回聊天向他要，不能在页面直接点开
+    revealed INTEGER DEFAULT 0,    -- 柯明确答应后才变 1；locked 本身仍保留
     author TEXT DEFAULT '柯',      -- 佳佳 / 柯
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
@@ -192,6 +195,18 @@ CREATE TABLE IF NOT EXISTS moments (
     user_liked INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT (datetime('now','+8 hours')),
     updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
+
+-- 柯的抽屉：真正属于柯的私有空间。private 内容只供服务器上的柯读取，绝不从用户 API 下发。
+CREATE TABLE IF NOT EXISTS ke_drawer_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT DEFAULT 'thought',   -- thought / plan / task / keepsake / other
+    title TEXT DEFAULT '',
+    content TEXT NOT NULL,
+    teaser TEXT DEFAULT '',        -- 柯愿意让佳佳看见的一句外壳，可为空
+    visibility TEXT DEFAULT 'private', -- private / teaser / released
+    created_at DATETIME DEFAULT (datetime('now','+8 hours')),
+    released_at DATETIME
 );
 
 -- 朋友圈评论
@@ -291,10 +306,14 @@ def init_db():
         conn.execute("ALTER TABLE chat_messages ADD COLUMN image TEXT DEFAULT ''")
     if "is_push" not in mcols:
         conn.execute("ALTER TABLE chat_messages ADD COLUMN is_push INTEGER DEFAULT 0")
+    if "model" not in mcols:
+        conn.execute("ALTER TABLE chat_messages ADD COLUMN model TEXT DEFAULT ''")
     # 旧库平滑升级：会话表补 summarized_until（会话总结用：已折叠到摘要的最大消息 id）
     scols = [r["name"] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()]
     if "summarized_until" not in scols:
         conn.execute("ALTER TABLE chat_sessions ADD COLUMN summarized_until INTEGER DEFAULT 0")
+    if "summary_version" not in scols:
+        conn.execute("ALTER TABLE chat_sessions ADD COLUMN summary_version TEXT DEFAULT ''")
     # 旧库平滑升级：日记表补 kind 列（diary=睡前日记 / dream=昨晚的梦）
     dcols = [r["name"] for r in conn.execute("PRAGMA table_info(diaries)").fetchall()]
     if "kind" not in dcols:
@@ -305,6 +324,8 @@ def init_db():
     # 日记由两个人共同书写：存量日记视为柯写的，新页面明确记录佳佳/柯。
     if "author" not in dcols:
         conn.execute("ALTER TABLE diaries ADD COLUMN author TEXT DEFAULT '柯'")
+    if "revealed" not in dcols:
+        conn.execute("ALTER TABLE diaries ADD COLUMN revealed INTEGER DEFAULT 0")
     ccols = [r["name"] for r in conn.execute("PRAGMA table_info(diary_comments)").fetchall()]
     if "author" not in ccols:
         conn.execute("ALTER TABLE diary_comments ADD COLUMN author TEXT DEFAULT '佳佳'")
@@ -345,16 +366,16 @@ def init_db():
     conn.close()
 
 # ---- 便捷读写 ----
-def add_message(author, content, session_id=1, msg_type="text", image="", is_push=False):
+def add_message(author, content, session_id=1, msg_type="text", image="", is_push=False, model=""):
     conn = get_db()
-    conn.execute("INSERT INTO chat_messages (session_id,author,content,msg_type,image,is_push) VALUES (?,?,?,?,?,?)",
-                 (session_id, author, content, msg_type, image, 1 if is_push else 0))
+    conn.execute("INSERT INTO chat_messages (session_id,author,content,msg_type,image,is_push,model) VALUES (?,?,?,?,?,?,?)",
+                 (session_id, author, content, msg_type, image, 1 if is_push else 0, model or ""))
     conn.commit(); conn.close()
 
 def recent_messages(session_id=1, limit=40):
     conn = get_db()
     rows = conn.execute(
-        "SELECT id,author,content,created_at,image FROM chat_messages WHERE session_id=? ORDER BY id DESC LIMIT ?",
+        "SELECT id,author,content,created_at,image,model FROM chat_messages WHERE session_id=? ORDER BY id DESC LIMIT ?",
         (session_id, limit)).fetchall()
     conn.close()
     return [dict(r) for r in reversed(rows)]
@@ -1226,13 +1247,47 @@ def app_written_diaries():
     return [dict(r) for r in rows]
 
 def all_diaries(limit=100):
-    """日记列表（新的在前），带每页留言数。"""
+    """日记列表（新的在前），带每页留言数；未获准的锁页不把正文发到浏览器。"""
     conn = get_db()
     rows = conn.execute(
         "SELECT d.*, (SELECT COUNT(*) FROM diary_comments c WHERE c.diary_id=d.id) AS comments "
         "FROM diaries d ORDER BY d.created_at DESC, d.id DESC LIMIT ?", (limit,)).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    out = []
+    for row in rows:
+        item = dict(row)
+        hidden = bool(item.get("locked")) and not bool(item.get("revealed"))
+        item["locked_hidden"] = hidden
+        if hidden:
+            item["content"] = ""
+        out.append(item)
+    return out
+
+
+def locked_diary_brief(did):
+    """给“去找柯要”流程用；只返回标题等外壳，绝不返回锁页正文。"""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id,title,mood,author,created_at,locked,revealed FROM diaries WHERE id=?", (did,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def private_diary_for_model(did):
+    """仅给服务器上的柯判断是否交出锁页；绝不能从用户 API 返回。"""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id,title,content,mood,author,created_at,locked,revealed FROM diaries WHERE id=?", (did,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def reveal_diary(did):
+    """柯在聊天里明确答应后解锁；不是前端点击即开。"""
+    conn = get_db()
+    cur = conn.execute("UPDATE diaries SET revealed=1 WHERE id=? AND locked=1", (did,))
+    conn.commit(); changed = cur.rowcount > 0; conn.close()
+    return changed
 
 def diary_written_today(today, kind="diary"):
     """今天(中国时间 YYYY-MM-DD)写过某类(日记/梦)没？防止 cron 重复写。"""
@@ -1260,6 +1315,61 @@ def diary_comments(did):
                         (did,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ---- 柯的抽屉 ----
+def add_drawer_item(content, kind="thought", title="", teaser="", visibility="private"):
+    """仅供服务器内部/柯的自主层调用；浏览器没有对应写入接口。"""
+    visibility = visibility if visibility in ("private", "teaser", "released") else "private"
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO ke_drawer_items (kind,title,content,teaser,visibility,released_at) "
+        "VALUES (?,?,?,?,?,CASE WHEN ?='released' THEN datetime('now','+8 hours') ELSE NULL END)",
+        (kind or "thought", title or "", content, teaser or "", visibility, visibility))
+    conn.commit(); item_id = cur.lastrowid; conn.close()
+    return item_id
+
+
+def release_drawer_item(item_id, teaser=None):
+    """柯主动把一件东西拿出来；可以同时改他愿意给佳佳看的引句。"""
+    conn = get_db()
+    if teaser is None:
+        cur = conn.execute(
+            "UPDATE ke_drawer_items SET visibility='released', released_at=datetime('now','+8 hours') WHERE id=?",
+            (item_id,))
+    else:
+        cur = conn.execute(
+            "UPDATE ke_drawer_items SET visibility='released', teaser=?, released_at=datetime('now','+8 hours') WHERE id=?",
+            (teaser, item_id))
+    conn.commit(); changed = cur.rowcount > 0; conn.close()
+    return changed
+
+
+def private_drawer_items(limit=30):
+    """模型侧专用读取：包含正文。不要把本函数结果直接 jsonify。"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id,kind,title,content,teaser,visibility,created_at FROM ke_drawer_items "
+        "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def public_drawer_view(limit=20):
+    """佳佳端可见视图：private 完全不返回；teaser 只返回柯主动留下的外壳。"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id,kind,title,teaser,visibility,created_at,released_at,"
+        "CASE WHEN visibility='released' THEN content ELSE '' END AS content "
+        "FROM ke_drawer_items WHERE visibility IN ('teaser','released') "
+        "ORDER BY COALESCE(released_at,created_at) DESC,id DESC LIMIT ?", (limit,)).fetchall()
+    sealed = bool(conn.execute(
+        "SELECT 1 FROM ke_drawer_items WHERE visibility='private' LIMIT 1").fetchone())
+    # 未获准的锁日记也属于柯暂时留在手里的东西，但不暴露数量、标题或正文。
+    sealed = sealed or bool(conn.execute(
+        "SELECT 1 FROM diaries WHERE locked=1 AND COALESCE(revealed,0)=0 LIMIT 1").fetchone())
+    conn.close()
+    return {"sealed": sealed, "outside": [dict(r) for r in rows]}
 
 def messages_on_date(date, session_id=1):
     """某天(中国时间 YYYY-MM-DD)的全部消息，给写日记回顾用。"""
@@ -1314,14 +1424,21 @@ def session_exists(sid):
 
 def get_session(sid=1):
     conn = get_db()
-    row = conn.execute("SELECT id,name,summary,summarized_until FROM chat_sessions WHERE id=?", (sid,)).fetchone()
+    row = conn.execute("SELECT id,name,summary,summarized_until,summary_version FROM chat_sessions WHERE id=?", (sid,)).fetchone()
     conn.close()
     return dict(row) if row else None
 
-def set_session_summary(sid, summary, summarized_until):
+def set_session_summary(sid, summary, summarized_until, summary_version=""):
     conn = get_db()
-    conn.execute("UPDATE chat_sessions SET summary=?, summarized_until=?, updated_at=datetime('now','+8 hours') WHERE id=?",
-                 (summary, summarized_until, sid))
+    conn.execute("UPDATE chat_sessions SET summary=?, summarized_until=?, summary_version=?, updated_at=datetime('now','+8 hours') WHERE id=?",
+                 (summary, summarized_until, summary_version or "", sid))
+    conn.commit(); conn.close()
+
+
+def reset_session_summary(sid):
+    """人格版本变化时清掉旧摘要游标，下一次只从用户原话重建。聊天原文不删除。"""
+    conn = get_db()
+    conn.execute("UPDATE chat_sessions SET summary='', summarized_until=0, summary_version='' WHERE id=?", (sid,))
     conn.commit(); conn.close()
 
 def messages_for_summary(sid=1, keep_recent=30):

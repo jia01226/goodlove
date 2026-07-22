@@ -32,8 +32,9 @@ main{max-width:640px;margin:0 auto}
 .title{font-size:19px;font-weight:700;margin:10px 0 8px;letter-spacing:.5px}
 .body{font-size:15px;line-height:1.8;color:#5c5670;white-space:pre-wrap}
 .page:not(.open) .body{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.page.lockedHide .body{filter:blur(5px);user-select:none}
+.page.lockedHide .body{color:#a09793;font-style:italic;user-select:none}
 .hint{font-size:12.5px;color:var(--gold);margin-top:6px}
+.ask-diary{margin-top:12px;min-height:44px;border:1px solid #e3cf9a;border-radius:999px;background:var(--gold-bg);color:#9b7a35;padding:0 18px;font:600 13px inherit}
 .cmts{border-top:1px dashed var(--line);margin-top:12px;padding-top:10px;display:none}
 .page.open .cmts{display:block}
 .cmts .one{font-size:13.5px;color:var(--soft);margin-bottom:6px;line-height:1.6}
@@ -69,6 +70,7 @@ main{max-width:640px;margin:0 auto}
   <summary>＋ 写下今天的一页</summary>
   <div class="compose-grid">
     <div class="who"><select id="entryAuthor" aria-label="写作者"><option>佳佳</option><option>柯</option></select><input id="entryMood" placeholder="此刻心情，例如：平静" value="平静"></div>
+    <label style="display:flex;align-items:center;gap:8px;color:var(--soft);font-size:13px"><input id="entryLocked" type="checkbox" style="width:auto"> 由柯锁起这一页，佳佳之后去聊天里向他要</label>
     <input id="entryTitle" placeholder="这一页的标题">
     <textarea id="entryContent" placeholder="今天想写下什么……"></textarea>
     <button type="button" onclick="writeEntry()">写进我们的日记</button>
@@ -94,23 +96,25 @@ async function load(){
   for(const d of rows){
     const isDream=d.kind==="dream";
     const el=document.createElement("article");
-    el.className="page"+(d.locked?" lockedHide":"")+(isDream?" dream":"");
+    el.className="page"+(d.locked_hidden?" lockedHide":"")+(isDream?" dream":"");
     el.innerHTML=`
       <div class="meta"><span class="author">${esc(d.author||"柯")}写的</span><span>${fmt(d.created_at)}</span><span class="chip${isDream?" dream":""}">${isDream?"🌙 昨晚的梦":esc(d.mood||"静")}</span>
-        ${d.locked?'<span class="chip lock">🔒 你猜开的</span>':""}
+        ${d.locked?`<span class="chip lock">${d.locked_hidden?"🔒 柯锁着":"🔓 柯给你了"}</span>`:""}
         ${d.source==='repo'?'<span class="chip">✍️ 爸爸手写</span>':""}
         ${d.comments?`<span class="cmt">留言 ${d.comments}</span>`:""}</div>
       <div class="title">${esc(d.title)}</div>
-      <div class="body">${esc(d.content)}</div>
-      ${d.locked?'<div class="hint">锁起来的一页 · 点一下才给看</div>':""}
+      <div class="body">${d.locked_hidden?"这一页还在柯手里。正文没有传到你的页面。":esc(d.content)}</div>
+      ${d.locked_hidden?'<div class="hint">他想等你亲自去问。</div><button class="ask-diary" type="button">去找柯要这页</button>':""}
       <div class="cmts"><div class="clist"></div>
         <div class="crow"><select aria-label="回复者"><option>佳佳</option><option>柯</option></select><input placeholder="在这页留句话…" /><button>回复</button></div></div>`;
     el.addEventListener("click",async ev=>{
-      if(ev.target.closest(".crow"))return;
-      if(el.classList.contains("lockedHide")){el.classList.remove("lockedHide");el.querySelector(".hint").textContent="🔓 被你猜开了";return;}
+      if(ev.target.closest(".crow")||ev.target.closest(".ask-diary"))return;
+      if(el.classList.contains("lockedHide"))return;
       el.classList.toggle("open");
       if(el.classList.contains("open"))loadComments(el,d.id);
     });
+    const ask=el.querySelector(".ask-diary");
+    if(ask)ask.onclick=()=>{location.href="/?diary_request="+encodeURIComponent(d.id);};
     el.querySelector(".crow button").onclick=async()=>{
       const inp=el.querySelector(".crow input");const t=inp.value.trim();if(!t)return;
       const author=el.querySelector(".crow select").value;
@@ -127,7 +131,7 @@ async function loadComments(el,id){
 async function writeEntry(){
   const title=$("#entryTitle").value.trim(),content=$("#entryContent").value.trim();
   if(!title||!content){alert("标题和正文都写一点吧");return;}
-  const body={title,content,mood:$("#entryMood").value.trim()||"平静",author:$("#entryAuthor").value};
+  const body={title,content,mood:$("#entryMood").value.trim()||"平静",author:$("#entryAuthor").value,locked:$("#entryLocked").checked};
   const r=await api("/api/diary/entry",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){alert("这一页暂时没有写进去");return;}
   $("#entryTitle").value="";$("#entryContent").value="";await load();

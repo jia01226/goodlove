@@ -9,6 +9,7 @@
   push     Web Push
   track    行踪/健康上报与活动查询
   diary    枕边日记
+  drawer   柯的抽屉（私藏内容无用户读取接口）
   group    群聊
   reading  共读
   capsule  时间胶囊

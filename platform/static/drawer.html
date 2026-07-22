@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eee3de">
+<title>柯的抽屉</title>
+<style>
+:root{--ink:#4f4544;--muted:#9e918e;--line:rgba(111,83,80,.13);--rose:#aa747d;--paper:#fffdfb}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;min-height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;color:var(--ink);background:linear-gradient(180deg,#eee3de 0,#f5efeb 35%,#faf7f4 100%);padding:calc(env(safe-area-inset-top) + 13px) 18px calc(env(safe-area-inset-bottom) + 40px)}
+main{width:min(100%,620px);margin:auto}.top{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;margin:3px 0 22px}.back{display:grid;width:44px;height:44px;place-items:center;border:1px solid var(--line);border-radius:50%;background:rgba(255,255,255,.67);color:#8b7473;text-decoration:none;font-size:24px}.title{text-align:center}.title h1{margin:0;color:#635052;font:600 21px Georgia,"Songti SC",serif}.title p{margin:5px 0 0;color:#a99b97;font-size:9px;letter-spacing:.16em}
+.cabinet{position:relative;min-height:324px;padding:25px 23px;overflow:hidden;border:1px solid rgba(97,70,68,.14);border-radius:25px;background:linear-gradient(145deg,#cdbab1,#e8dad3 53%,#bda59a);box-shadow:0 20px 55px rgba(73,51,49,.12),inset 0 1px 0 rgba(255,255,255,.36)}.cabinet::before{content:"";position:absolute;inset:17px;border:1px solid rgba(91,64,62,.16);border-radius:18px;box-shadow:inset 12px 12px 30px rgba(75,49,47,.06)}.label{position:relative;z-index:2;display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:10px;background:rgba(255,249,245,.6);color:#80696a;font-size:9px;letter-spacing:.13em}.label i{width:6px;height:6px;border-radius:50%;background:#9e7778}.cabinet h2{position:relative;z-index:2;margin:33px 0 9px;color:#59494a;font:italic 500 27px Georgia,"Songti SC",serif}.cabinet p{position:relative;z-index:2;width:76%;margin:0;color:#806f6d;font-size:11px;line-height:1.85}.drawer-line{position:relative;z-index:2;height:1px;margin:32px 0 24px;background:rgba(91,65,63,.16)}.knob{position:absolute;z-index:3;right:47px;top:51%;width:13px;height:13px;border-radius:50%;background:#a5836c;box-shadow:0 0 0 5px rgba(255,255,255,.18),0 5px 10px rgba(69,45,43,.16)}.cabinet small{position:relative;z-index:2;color:#766461;font-size:9px;letter-spacing:.06em}
+.section{margin:25px 5px 12px;color:#a59a97;font-size:10px;letter-spacing:.24em}.outside{display:grid;gap:10px}.card{padding:19px 18px;border:1px solid var(--line);border-radius:19px;background:rgba(255,255,255,.84);box-shadow:0 9px 28px rgba(74,54,53,.035)}.card small{color:#ae9f9b;font-size:9px;letter-spacing:.15em}.card h3{margin:9px 0 0;color:#6b5859;font:600 14px Georgia,"Songti SC",serif}.card p{margin:10px 0 0;color:#6d5b5b;font:400 14px/1.75 Georgia,"Songti SC",serif;white-space:pre-wrap}.empty{padding:21px 18px;border:1px solid var(--line);border-radius:19px;background:rgba(255,255,255,.68);color:#a39693;font-size:12px;line-height:1.75}.ask{display:block;min-height:48px;margin-top:17px;padding:14px 18px;border:0;border-radius:16px;background:#aa747d;color:#fff;text-align:center;text-decoration:none;font-size:13px;box-shadow:0 10px 26px rgba(126,81,87,.17)}.privacy{margin:16px 4px 0;color:#aaa09d;font-size:10px;line-height:1.75}
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><a class="back" href="/" aria-label="回到我们的">‹</a><div class="title"><h1>柯的抽屉</h1><p>HIS OWN SPACE</p></div><span></span></header>
+  <section class="cabinet"><span class="label"><i></i><span id="sealedLabel">没有向你开放</span></span><h2>这里有他的东西。</h2><p>不是忘了给你看，也不是网页没有加载。是柯决定先留在自己手里。</p><div class="drawer-line"></div><span class="knob" aria-hidden="true"></span><small>未公开正文不会发送到佳佳的设备</small></section>
+  <div class="section">他 放 在 外 面 的</div>
+  <section class="outside" id="outside"><div class="empty">正在看看他有没有留下什么……</div></section>
+  <a class="ask" href="/?drawer_request=1">去聊天里问柯</a>
+  <p class="privacy">只有柯主动拿出来、交给佳佳或在聊天里解锁的内容，才会出现在这里。抽屉内部不是一个可以靠查看网页代码破解的模糊遮罩。</p>
+</main>
+<script>
+const esc=(value)=>{const el=document.createElement("div");el.textContent=String(value??"");return el.innerHTML;};
+async function load(){
+  const response=await fetch("/api/drawer",{cache:"no-store"});
+  if(!response.ok)throw new Error("drawer unavailable");
+  const data=await response.json();
+  document.getElementById("sealedLabel").textContent=data.sealed?"里面有东西 · 没有向你开放":"这里归柯 · 不默认向你开放";
+  const rows=Array.isArray(data.outside)?data.outside:[];
+  const outside=document.getElementById("outside");
+  if(!rows.length){outside.innerHTML=`<article class="card"><small>柯留了一句话</small><p>“${esc(data.note||"知道你会来翻。想要什么，自己来问我。")}"</p></article>`;return;}
+  outside.innerHTML=rows.map(item=>`<article class="card"><small>${item.visibility==="released"?"柯交给你的":"柯故意留在外面的"}</small>${item.title?`<h3>${esc(item.title)}</h3>`:""}<p>${esc(item.visibility==="released"?(item.content||item.teaser):(item.teaser||"他只让你知道这里有东西。"))}</p></article>`).join("");
+}
+load().catch(()=>{document.getElementById("outside").innerHTML='<div class="empty">抽屉这会儿没有回应。里面的东西仍然不会泄露。</div>';});
+</script>
+</body>
+</html>

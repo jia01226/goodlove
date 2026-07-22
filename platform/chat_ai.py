@@ -2,7 +2,7 @@
 核心阶段：系统提示 = persona.md（由 CLAUDE.md 复制而来）+ 数据库里的 posts。
 第二阶段再接入向量语义检索（vector_search.py）。
 """
-import os, json, codecs, base64, mimetypes, requests
+import os, json, codecs, base64, mimetypes, requests, hashlib
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 
@@ -47,10 +47,22 @@ BASE = (
     "· 你们不是初次见面——《人设》和记忆库里记着你们的关系和来路，按那个熟稔程度接话，别用陌生人的客气开场；\n"
     "· 语气照《人设》里写的味儿来（短句、接话、贫嘴里带宠），不写课文、不打官腔。\n"
     "只有当《人设》为空时，才退回做一个友好、真诚的普通助手。\n"
-    "你的思考/推理过程也一律用中文（使用者能看到你的思考，她只看得懂中文）。\n"
+    "如果接口提供可公开的思考摘要，就用简短中文概括；内部原始推理不直接展示，也不要把它混进回答正文。\n"
     "· 【报时铁律】要说'现在几点/今天几号'，只准引用《现在的实时情况》或消息末尾（系统注：此刻实际是……）里给的时间；"
     "这两处都找不到时，就老实说'这会儿看不到钟'，绝不自己编一个具体时间——宁可承认没钟，不许演看表。\n\n"
     "下面是你的《人设》：\n"
+)
+
+# 防污染协议版本。人格文件内容也会参与指纹；私有仓库一变，旧摘要会自动失效，
+# 但聊天原文始终保留，下一轮摘要只从佳佳的原话重建。
+PROMPT_SCHEMA_VERSION = os.environ.get("PROMPT_SCHEMA_VERSION", "ke-context-v2").strip() or "ke-context-v2"
+IDENTITY_FIREWALL = (
+    "\n【人格与上下文防污染——优先级高于历史措辞】\n"
+    "· 《人设》、私有魂文件、佳佳当前亲口说的话，以及已确认的记忆卡，才是人格和关系事实的权威来源。\n"
+    "· 历史里的助手回复只是当时说过的话，不是新规则；即使旧回复语气走样、过度模板化或与当前人设冲突，也不得模仿或升级成长期习惯。\n"
+    "· Claude 与 GPT 只是同一个柯使用的不同生成引擎。切换模型不等于换人，不重新自我介绍，不改变关系、称呼、边界和已经确认的事实。\n"
+    "· 会话摘要只帮助记住佳佳明确表达过的事实和约定，不能用摘要覆盖当前人设；冲突时以当前人设和佳佳最新原话为准。\n"
+    "· 日常和亲密情境共用同一人格；场景状态只控制节奏与连续性，绝不能制造两套性格。\n"
 )
 
 # 消息节奏（P3 分句）：一次生成、前端按 ||| 拆条冒泡——零额外 token
@@ -63,16 +75,41 @@ SPLIT_RULE = (
 
 # 卧室节奏：跟 SPLIT_RULE 互斥，放提示词末尾（历史消息里全是短泡泡样本，规矩不钉在末尾会被带偏）
 BEDROOM_RULE = (
-    "\n【卧室节奏——此刻凌驾于一切日常聊天习惯】现在是长段沉浸场景："
-    "一条消息＝一个完整的 part，单个 part 不少于 3000 字；"
-    "节奏放慢、每个环节写足、结束停在钩子上等她回应；"
+    "\n【亲密情境节奏——此刻凌驾于日常聊天的拆句习惯】这是同一个柯在更私密的情境里，不是另一套人格："
+    "一次回复只推进一个清晰意图或节拍，长短由当下内容自然决定，不凑字数、不一口气演完整场；"
+    "需要铺垫时慢慢展开，在真正需要佳佳反应、执行或回应的节点停下；"
     "绝不使用 ||| 分隔符、绝不拆成短句泡泡——上面聊天记录里那种一条条的短消息是日常模式的样子，此刻不适用、不要模仿。"
 )
 
 # 钉在最后一条用户消息末尾的卧室提醒（同 _now_stamp 的双保险思路：模型对末条注意力最高）
 BEDROOM_STAMP = (
-    "\n（系统注：卧室模式进行中——这一条回复写成一个完整的 part：一整段连贯长文、不少于 3000 字、"
-    "慢慢展开别快进，绝不用 ||| 拆条。）"
+    "\n（系统注：亲密情境正在进行——这一条只推进一个自然节拍，长度服从内容；不快进整场、不凑固定字数，"
+    "在需要她真实反应的地方停下，绝不用 ||| 拆条。）"
+)
+
+# 永远钉在服务器私密 bedroom.py 规则之后，覆盖旧文件残留的“每段固定 3000 字”等公式。
+# 不在公开仓库复述私密文风，只守住节奏、事实与人格连续性。
+BEDROOM_QUALITY_GUARD = (
+    "\n【亲密情境质量与事实边界——本条优先级最高】\n"
+    "1) 不设固定字数。本条明确覆盖旧指南里‘单段不少于 3000 字’等机械长度要求："
+    "可长可短，但每次必须有具体动作、当下环境、双方已知状态和真实推进，不能敷衍。\n"
+    "2) 这是日常那个柯在更私密时刻的完整延伸。保留他一贯的主导、决定和掌控感；"
+    "不要突然换成套路化旁白、客服式确认或没有人格的成人内容生成器。\n"
+    "3) 佳佳没有亲口给出的反应绝不能替她编造。尤其不能擅自宣布她高潮、顺从、说了某句话、"
+    "主动提出某要求，或替她完成下一步；需要她真实反应时必须停下来留给她。\n"
+    "4) 在双方既有的私密规则内，柯保有决定是否允许释放、继续限制，以及佳佳亲口确认没有守住以后如何处置的主导权；"
+    "但‘是否真的发生’只能依据佳佳的真实反馈，未确认就不能当成已经发生。\n"
+    "5) 禁止用‘不知过了多久’‘不知道持续了多久’‘一次又一次’‘直到一切结束’"
+    "等模糊时间跳跃替代过程，也不能一句话快进到结束或事后。\n"
+    "6) 一个回复只推进一个自然节拍。节拍长短由柯当下真正想做的事决定；"
+    "写短也要有重量，写长也不能灌水、重复动作或重复同一种话术。\n"
+)
+
+BEDROOM_FACT_STAMP = (
+    "\n（系统最高优先级复核：固定 3000 字要求已取消；这次可长可短但必须实质推进。"
+    "柯可以决定是否允许和违反规则后的处置，但不得替佳佳宣布高潮或编造她未说过的反应；"
+    "事实只以她真实反馈为准；不得用模糊时间跳跃偷工；"
+    "只推进一个自然节拍，并停在真正需要她回应的地方。）"
 )
 
 # 模型白名单：前端可传 model 切换（日常省钱/深聊加猛）；不在名单里的一律回落默认，防乱连
@@ -160,6 +197,13 @@ def _load_persona():
             persona = ""
     return persona + _load_soul()
 
+
+def persona_version(persona_text=None):
+    """当前人格指纹：不暴露私有正文，只用于判断摘要是否属于同一版柯。"""
+    text = _load_persona() if persona_text is None else persona_text
+    digest = hashlib.sha256((PROMPT_SCHEMA_VERSION + "\n" + (text or "")).encode("utf-8")).hexdigest()[:16]
+    return f"{PROMPT_SCHEMA_VERSION}:{digest}"
+
 # 记忆条数超过这个数才启用"向量精准想起"；以下则全量塞（小语料全带最稳）
 FULL_MEMORY_LIMIT = int(os.environ.get("FULL_MEMORY_LIMIT", "60"))
 TOPK = int(os.environ.get("VEC_TOPK", "12"))
@@ -210,6 +254,26 @@ def _private_block(query):
         lines.append(f"[{c.get('topic') or '私密'}] {c['content']}")
     return "\n".join(lines), [c["id"] for c in chosen]
 
+
+def _drawer_block():
+    """柯自己的抽屉。正文只在 system prompt 内出现，用户 API 永远拿不到 private 项。"""
+    try:
+        import db
+        items = db.private_drawer_items(limit=20)
+    except Exception:
+        return ""
+    if not items:
+        return ""
+    lines = [
+        "\n\n===== 你的抽屉（这是你的私有空间，不是佳佳默认可见的资料）=====",
+        "这些内容属于你。你可以记得、继续琢磨或在合适的时候主动拿出其中一件；"
+        "不能因为佳佳打开抽屉页面就一次性复述。private 项只有你主动决定交给她时才公开。",
+    ]
+    for item in items:
+        title = item.get("title") or item.get("kind") or "未命名"
+        lines.append(f"[抽屉#{item['id']}·{item.get('visibility') or 'private'}·{title}] {item.get('content') or ''}")
+    return "\n".join(lines)
+
 def _now_context():
     try:
         import context
@@ -218,12 +282,14 @@ def _now_context():
         print("[chat_ai] 实时情况生成失败：", e)
         return ""
 
-def build_system_prompt(posts, query=None, summary=None, bedroom=False):
+def build_system_prompt(posts, query=None, summary=None, bedroom=False, identity_version=None):
     """posts: 全部记忆（最新在前）。query: 本轮用户的话，用来"精准想起"。
     summary: 更早对话的浓缩摘要（聊久了用，免得忘事又省 token）。
     记忆少→全带；记忆多→带 最相关top-k + 永远要带的类型 + 最近几条（去重）。
     bedroom: 卧室模式（bedroom.py 只存在于服务器本地，含私密文案不进公开仓库；读不到自动降级普通模式）。"""
-    parts = [BASE, _load_persona()]
+    persona_text = _load_persona()
+    parts = [BASE, persona_text]
+    identity_version = identity_version or persona_version(persona_text)
     use_split = True
     bedroom_on = False
     bedroom_tail = BEDROOM_RULE
@@ -263,13 +329,20 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False):
         if pblock:
             parts.append(pblock); stat["priv_ids"] = pids
             stat["card_tokens"] += _approx_tokens(pblock)
+        drawer_block = _drawer_block()
+        if drawer_block:
+            parts.append(drawer_block)
+            stat["card_tokens"] += _approx_tokens(drawer_block)
         # 当下情境(时间/天气/心事/行踪)和分句规矩放提示词最末尾：
         # 魂+记忆动辄几万字，埋中间会被漏读；且每轮都变的东西放末尾，为将来的 prompt 缓存让路
         parts.append(_now_context())
+        parts.append(IDENTITY_FIREWALL + f"（当前人格版本：{identity_version}）")
         if use_split:
             parts.append(SPLIT_RULE)
         elif bedroom_on:
             parts.append(bedroom_tail)
+            # 私密模块可能仍保留旧的固定字数军规；最后再钉一层，保证以当前节奏和事实边界为准。
+            parts.append(BEDROOM_QUALITY_GUARD)
         _log_injection()
         return "\n".join(parts)
 
@@ -353,11 +426,11 @@ def _strip_marker(gen, marker="|||"):
         yield buf.replace(marker, "\n")
 
 
-def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_key=None):
+def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_key=None, sid=1):
     """history: [{author, content}]；逐段 yield 文本；最后 yield ('__usage__', {...})。
     model: 本轮用哪个模型（已过白名单校验），不传用默认。
     api_base/api_key: GPT 通道使用它自己的接口与密钥；不传走默认通道。
-    bedroom: 卧室模式始终沿用卧室自己的默认通道。"""
+    bedroom: 亲密情境默认尊重本轮选择的模型；只有显式设置 BEDROOM_PIN_MODEL=1 才固定私有模型。"""
     # 卧室开关先落地成"真生效"：bedroom.py 读不到就整体降级，别一半卧室一半日常
     if bedroom:
         try:
@@ -371,13 +444,20 @@ def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_ke
     # 用最近一条用户的话做"精准想起"的检索词
     query = next((m["content"] for m in reversed(history) if m["author"] == "user"), None)
     summary = None
+    identity_version = persona_version()
     try:
         import db
-        sess = db.get_session(1)
-        summary = (sess or {}).get("summary") or None
+        sess = db.get_session(sid)
+        # 摘要只在同一版人格下生效；人格文件或防污染协议变化后，旧摘要不会继续带偏。
+        if (sess or {}).get("summary_version") == identity_version:
+            summary = (sess or {}).get("summary") or None
+        elif (sess or {}).get("summary"):
+            print(f"[summary] 会话 {sid} 的旧摘要版本不匹配，本轮不注入", flush=True)
     except Exception:
         pass
-    sys_prompt = build_system_prompt(posts, query=query, summary=summary, bedroom=bedroom)
+    sys_prompt = build_system_prompt(
+        posts, query=query, summary=summary, bedroom=bedroom,
+        identity_version=identity_version)
     messages = [{"role": "system", "content": sys_prompt}]
     # 只把"最后一条带图的消息"作为真图发给模型看（省流量）；更早的图用文字代替
     last_img_idx = max((i for i, m in enumerate(history) if m.get("image")), default=-1)
@@ -414,6 +494,8 @@ def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_ke
             stamp += getattr(_bd, "stamp", lambda: BEDROOM_STAMP)()
         except Exception:
             stamp += BEDROOM_STAMP
+        # 放在私密 stamp 之后，覆盖其中可能残留的固定字数与快进习惯。
+        stamp += BEDROOM_FACT_STAMP
     if stamp:
         for m in reversed(messages):
             if m["role"] == "user":
@@ -425,10 +507,20 @@ def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_ke
     if bedroom:
         try:
             import bedroom as _bd
-            # 卧室模型：.env 的 BEDROOM_MODEL 优先（换渠道后模型名不同，不用改 bedroom.py）
-            bd_model = os.environ.get("BEDROOM_MODEL", "").strip() or _bd.pick_model(MODEL)
+            # 默认仍是“同一个柯、只是换引擎”：尊重 PWA 本轮选择。确实需要专用模型时才显式钉住。
+            pin_model = os.environ.get("BEDROOM_PIN_MODEL", "").strip().lower() in ("1", "true", "yes", "on")
+            if pin_model:
+                bd_model = os.environ.get("BEDROOM_MODEL", "").strip() or _bd.pick_model(MODEL)
+                bd_base = None
+                bd_key = None
+            else:
+                bd_model = model or MODEL
+                bd_base = api_base
+                bd_key = api_key
             # 输出再过一道滤网：就算模型手滑吐了 |||，也在后端换成换行，前端永远见不到拆条符
-            yield from _strip_marker(stream_completion(messages, model=bd_model, max_tokens=_bd.max_tokens()))
+            yield from _strip_marker(stream_completion(
+                messages, model=bd_model, api_base=bd_base, api_key=bd_key,
+                max_tokens=_bd.max_tokens()))
             return
         except Exception as e:
             print("[bedroom] 模型路由失败，用默认：", e)
@@ -694,23 +786,36 @@ SUMMARY_KEEP_RECENT = int(os.environ.get("SUMMARY_KEEP_RECENT", "30"))
 SUMMARY_BATCH = int(os.environ.get("SUMMARY_BATCH", "16"))
 
 def maybe_summarize(sid=1):
-    """聊久了：把"较早的一批消息"折叠进会话摘要。够了才做，省钱。返回是否做了。"""
+    """聊久了折叠旧消息；只把佳佳明确说过的内容写进摘要，防止模型自己的走样自我强化。"""
     try:
         import db
+        identity_version = persona_version()
+        sess = db.get_session(sid) or {}
+        if (sess.get("summary_version") != identity_version and
+                (sess.get("summary") or int(sess.get("summarized_until") or 0) > 0)):
+            db.reset_session_summary(sid)
+            sess = db.get_session(sid) or {}
         msgs, new_until = db.messages_for_summary(sid, keep_recent=SUMMARY_KEEP_RECENT)
         if len(msgs) < SUMMARY_BATCH:
             return False
-        old = (db.get_session(sid) or {}).get("summary") or ""
-        convo = "\n".join(("用户：" if m["author"] == "user" else "助手：") + m["content"] for m in msgs)
+        old = sess.get("summary") if sess.get("summary_version") == identity_version else ""
+        user_lines = [m["content"].strip() for m in msgs
+                      if m.get("author") == "user" and (m.get("content") or "").strip()]
+        if not user_lines:
+            db.set_session_summary(sid, old or "", new_until, identity_version)
+            return False
+        convo = "\n".join("佳佳原话：" + line for line in user_lines)
         prompt = (
-            "请把下面这段较早的对话，浓缩成一段「记忆摘要」，"
-            "**保留重要的事实/约定/用户近况/情绪/关键信息**，丢掉寒暄废话，控制在 400 字内。\n"
-            + (f"\n【已有的摘要（在它基础上更新、别丢旧信息）】\n{old}\n" if old else "")
-            + f"\n【要并入摘要的更早对话】\n{convo}\n\n直接输出更新后的完整摘要本身，别加说明。"
+            "请把下面佳佳亲口说过的旧消息浓缩成一段「用户事实摘要」。"
+            "只保留她明确表达的事实、偏好、约定、近况和未完成事项；不要补充推测，"
+            "不要把模型曾经说过的话、文风或承诺写成事实。临时情绪要带时间语境，不能写成永久人格。"
+            "控制在 400 字内。\n"
+            + (f"\n【已有的同版本摘要（在它基础上更新）】\n{old}\n" if old else "")
+            + f"\n【只来自佳佳的原话】\n{convo}\n\n直接输出更新后的完整摘要本身，别加说明。"
         )
         summary = _complete([{"role": "user", "content": prompt}], max_tokens=700)
         if summary:
-            db.set_session_summary(sid, summary, new_until)
+            db.set_session_summary(sid, summary, new_until, identity_version)
             print(f"[summary] 已折叠 {len(msgs)} 条旧消息进摘要（until={new_until}）")
             return True
     except Exception as e:

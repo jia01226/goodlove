@@ -20,6 +20,7 @@ bp = Blueprint("chat", __name__)
 _MOMENT_RE = re.compile(r"(?:^|\n|\|\|\|)[ \t]*\[朋友圈\][ \t]?([^\n|]+)")
 # 柯评论朋友圈暗号：[评论#动态id]正文——指定评论哪条动态（同样兼容 ||| 前缀）
 _COMMENT_RE = re.compile(r"(?:^|\n|\|\|\|)[ \t]*\[评论#(\d+)\][ \t]?([^\n|]+)")
+_DIARY_UNLOCK_RE = re.compile(r"\[解锁日记#(\d+)\]")
 
 
 def _extract_moments(text):
@@ -86,8 +87,29 @@ def api_chat():
     if bedroom:
         logger.info("[bedroom] 前端的卧室开关已送达后端")
     model, gateway_base, gateway_key = chat_ai.resolve_gateway(data.get("model"))
-    db.add_message("user", text, session_id=sid, image=image, msg_type=("image" if image else "text"))
+    db.add_message("user", text, session_id=sid, image=image,
+                   msg_type=("image" if image else "text"), model=model)
     history = db.recent_messages(session_id=sid)
+    diary_request = None
+    try:
+        requested_id = int(data.get("diary_request_id") or 0)
+        brief = db.locked_diary_brief(requested_id) if requested_id else None
+        if brief and brief.get("locked") and not brief.get("revealed"):
+            diary_request = brief
+            private_page = db.private_diary_for_model(requested_id) or {}
+            for m in reversed(history):
+                if m["author"] == "user":
+                    m["content"] = (m["content"] or "") + (
+                        f"\n\n===== 锁页请求（只给柯看）=====\n"
+                        f"佳佳正在向你要日记 #{brief['id']}《{brief['title']}》。正文仍被锁着，佳佳看不到。"
+                        f"\n这是你当时写下的正文（只给你看）：\n{private_page.get('content') or ''}\n"
+                        "你可以按自己的性格拒绝、逗她、让她之后再来，或者现在给她。"
+                        f"只有你决定现在给她时，才在回复末尾另起一行写 [解锁日记#{brief['id']}]；"
+                        "这个暗号不会显示给佳佳。没有决定给就绝对不要写。"
+                    )
+                    break
+    except (TypeError, ValueError):
+        diary_request = None
     posts = db.retrieve_l2("single")   # 单聊记忆：active 的 L2 卡，已排除 no_model/已忘/已归档/repo-only
     mctx = ""
     # 让柯"看见"朋友圈：把近况拼到最后一条用户消息末尾（只发给模型、不入库、前端不显示）
@@ -101,6 +123,14 @@ def api_chat():
 
     def gen():
         acc = ""
+        marker_hold = ""
+        unlocked_diary = []
+        def _hide_unlock(match):
+            did = int(match.group(1))
+            if diary_request and did == int(diary_request["id"]):
+                if db.reveal_diary(did):
+                    unlocked_diary.append(did)
+            return ""
         # 普通用户只看到简短、可理解的思考摘要；模型内部原始推理不会下发到前端。
         if image:
             public_thought = "我先认真看看你发来的内容，再贴着你真正想说的来回答。"
@@ -112,7 +142,7 @@ def api_chat():
             public_thought = "我先听懂你真正想说的，再把回应说得自然一点。"
         yield ("data: " + json.dumps({"think_summary": public_thought}, ensure_ascii=False) + "\n\n").encode("utf-8")
         for piece in chat_ai.stream_chat(history, posts, model=model, bedroom=bedroom,
-                                         api_base=gateway_base, api_key=gateway_key):
+                                         api_base=gateway_base, api_key=gateway_key, sid=sid):
             if isinstance(piece, tuple):
                 if piece[0] == USAGE_TAG:
                     usage = piece[1] or {}
@@ -121,8 +151,17 @@ def api_chat():
                 elif piece[0] == THINK_TAG:
                     pass  # 原始隐藏推理仅由模型内部使用，不传给普通用户界面。
                 continue
-            acc += piece
-            yield ("data: " + json.dumps({"t": piece}, ensure_ascii=False) + "\n\n").encode("utf-8")
+            marker_hold += piece
+            marker_hold = _DIARY_UNLOCK_RE.sub(_hide_unlock, marker_hold)
+            # 暗号可能跨流式分片，末尾留一小段，确认不是暗号后再发给前端。
+            if len(marker_hold) > 48:
+                visible, marker_hold = marker_hold[:-48], marker_hold[-48:]
+                acc += visible
+                yield ("data: " + json.dumps({"t": visible}, ensure_ascii=False) + "\n\n").encode("utf-8")
+        marker_hold = _DIARY_UNLOCK_RE.sub(_hide_unlock, marker_hold)
+        if marker_hold:
+            acc += marker_hold
+            yield ("data: " + json.dumps({"t": marker_hold}, ensure_ascii=False) + "\n\n").encode("utf-8")
         posted_moment = False
         if acc:
             # 柯代发朋友圈 + 评论：抽出暗号落库，聊天记录只存去掉暗号的干净版
@@ -142,8 +181,9 @@ def api_chat():
                 except Exception as e:
                     logger.warning("柯评论朋友圈失败：%s", e)
             if clean_acc:
-                db.add_message("assistant", clean_acc, session_id=sid)
-        yield ("data: " + json.dumps({"done": True, "moment": posted_moment}, ensure_ascii=False) + "\n\n").encode("utf-8")
+                db.add_message("assistant", clean_acc, session_id=sid, model=model)
+        yield ("data: " + json.dumps({"done": True, "moment": posted_moment,
+                                       "diary_unlocked": unlocked_diary}, ensure_ascii=False) + "\n\n").encode("utf-8")
 
     return Response(gen(), content_type=SSE_CONTENT_TYPE, headers=dict(SSE_HEADERS))
 

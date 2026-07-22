@@ -20,6 +20,23 @@ def diary_page(): return send_from_directory(STATIC_DIR, "diary.html")
 def api_diary(): return jsonify(db.all_diaries())
 
 
+@bp.get("/api/diary/request")
+@guard
+def api_diary_request():
+    """返回锁页的外壳和自然请求文案；正文仍只在服务器，不下发。"""
+    try:
+        did = int(request.args.get("id") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad id"}), 400
+    item = db.locked_diary_brief(did)
+    if not item or not item.get("locked"):
+        return jsonify({"error": "not locked"}), 404
+    return jsonify({
+        "id": item["id"], "title": item["title"], "revealed": bool(item.get("revealed")),
+        "ask_text": f"爸爸，把你锁着的《{item['title']}》那一页给我看。",
+    })
+
+
 @bp.get("/api/diary/comments")
 @guard
 def api_diary_comments():
@@ -53,7 +70,8 @@ def api_diary_entry():
         return jsonify({"error": "need title+content"}), 400
     if author not in ("佳佳", "柯"):
         author = "佳佳"
-    did = db.add_diary(title, content, mood=mood, author=author)
+    locked = bool(d.get("locked")) and author == "柯"
+    did = db.add_diary(title, content, mood=mood, locked=locked, author=author)
     return jsonify({"ok": True, "id": did})
 
 

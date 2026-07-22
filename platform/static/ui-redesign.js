@@ -260,7 +260,6 @@
         <button class="memory-tab on" data-memory-tab="pending">待确认<span class="nav-badge memory-tab-badge"></span></button>
         <button class="memory-tab" data-memory-tab="library">卡片库</button>
         <button class="memory-tab" data-memory-tab="timeline">时间线</button>
-        <button class="memory-tab" data-memory-tab="stars">回忆星图</button>
       </div>
       <section class="memory-panel active" data-memory-panel="pending">
         <a class="card pending-hero" href="/inbox"><span class="pending-mark">记</span><span><strong>这件事，我这样记对吗？</strong><span id="pendingSummary">正在看看有没有想请你确认的事。</span></span></a>
@@ -271,10 +270,7 @@
         <div class="card" id="addMemoryCard" hidden><h2>想让柯记住什么</h2><select id="ptype"><option value="MEMORY">日常</option><option value="EVENT">共同经历</option><option value="MOMENT">一个瞬间</option><option value="PROMISE">约定</option><option value="WISHLIST">未来想做的事</option></select><select id="pvis"><option value="both">我们都能看见</option><option value="app">只留在这里</option></select><input id="pcontent" placeholder="用自己的话写下来…"><button class="btn" onclick="addPost()">记下来</button></div>
         <div id="memoryCards" class="memory-grid"><div class="memory-empty">正在翻开卡片库…</div></div>
       </section>
-      <section class="memory-panel" data-memory-panel="timeline"><div id="memoryTimeline" class="timeline-list"><div class="memory-empty">正在把回忆按时间排好…</div></div></section>
-      <section class="memory-panel" data-memory-panel="stars">
-        <div class="card star-shell"><div class="star-copy"><h3>回忆星图</h3><p>每一个亮点，都是一件被认真珍藏的事。</p></div><div class="star-map" id="starMap"><button class="star-node center" data-star-topic="">佳佳和柯</button><button class="star-node relation" data-star-topic="关系">关系</button><button class="star-node safety" data-star-topic="安全感">安全感</button><button class="star-node habit" data-star-topic="习惯">习惯</button><button class="star-node experience" data-star-topic="共同经历">共同经历</button><button class="star-node future" data-star-topic="未来">未来</button><button class="star-node work" data-star-topic="工作">工作</button></div><div class="star-controls"><label for="starZoom">靠近一点</label><input id="starZoom" type="range" min="90" max="118" value="100"><label for="starTime">回忆时间</label><input id="starTime" type="range" min="20" max="100" value="100"></div></div>
-      </section>`;
+      <section class="memory-panel" data-memory-panel="timeline"><div id="memoryTimeline" class="timeline-list"><div class="memory-empty">正在把回忆按时间排好…</div></div></section>`;
   }
 
   function buildOursViewLegacy(view) {
@@ -313,6 +309,7 @@
       moments: `<circle cx="12" cy="12" r="5"/><circle cx="22" cy="18" r="5"/><path d="M5 27c.8-5 3.6-7.5 7-7.5 2.1 0 3.8.8 5 2.3M18 27c.6-3 2-4.5 4-4.5 2.2 0 3.8 1.5 4.5 4.5"/>`,
       heart: `<path d="M16 26S6 20 6 12.5C6 7 12.5 5 16 10c3.5-5 10-3 10 2.5C26 20 16 26 16 26Z"/><path d="M16 10v12"/>`,
       mood: `<circle cx="16" cy="16" r="11"/><path d="M11.5 13h.1M20.4 13h.1M11.5 19c2.8 2.6 6.2 2.6 9 0"/>`,
+      drawer: `<path d="M7 8h18v18H7z"/><path d="M7 15h18M13 11h6M13 19h6"/><circle cx="16" cy="22" r="1"/>`,
       more: `<circle cx="8" cy="16" r="1.7"/><circle cx="16" cy="16" r="1.7"/><circle cx="24" cy="16" r="1.7"/>`
     };
     return `<svg viewBox="0 0 32 32" aria-hidden="true">${paths[name] || paths.more}</svg>`;
@@ -342,7 +339,7 @@
             <button class="ours-entry anniv" id="openAnniversary" type="button"><span class="home-icon">${homeIcon("heart")}</span>纪念日</button>
             <button class="ours-entry mood" id="openMood" type="button"><span class="home-icon">${homeIcon("mood")}</span>心情</button>
             <a class="ours-entry photos" href="/photos"><span class="home-icon">${homeIcon("photo")}</span>照片</a>
-            <button class="ours-entry more" id="openLifeMore" type="button"><span class="home-icon">${homeIcon("more")}</span>更多</button>
+            <a class="ours-entry drawer" href="/drawer"><span class="home-icon">${homeIcon("drawer")}</span>柯的抽屉</a>
           </div></section><p class="ours-note">首页负责感受与陪伴，生活日历负责收好每天发生的事。</p>
         </div>
       </section>

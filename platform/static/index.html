@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#FBF8F1" />
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/static/icon.png" />
-<script src="/static/app-core.js?v=20260722c"></script>
-<script src="/static/ui-redesign.js?v=20260722c" defer></script>
+<script src="/static/app-core.js?v=20260722e"></script>
+<script src="/static/ui-redesign.js?v=20260722e" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="AI 助手" />
@@ -413,6 +413,7 @@ function scrollHard(){scroll();requestAnimationFrame(scroll);setTimeout(scroll,1
 // ---- 会话（多条对话切换）----
 let currentSid=(()=>{try{return +localStorage.getItem("sid")||1;}catch(_){return 1;}})();
 var selectedModel=(()=>{try{return localStorage.getItem("chat_model")||"";}catch(_){return "";}})();
+var pendingDiaryRequestId=0;
 function setChatModel(model){selectedModel=model||"";try{localStorage.setItem("chat_model",selectedModel);}catch(_){}}
 function setSid(id){currentSid=id;try{localStorage.setItem("sid",id);}catch(_){}}
 // 分句显示：助手消息按 ||| 拆成几条泡泡（像微信一句句发）；没分隔符就原样一条
@@ -457,9 +458,11 @@ async function send(){const t=$("#input").value.trim();const img=pending?pending
     const parts=acc.split("|||");
     while(bubbles.length<parts.length)bubbles.push(bubble("assistant",""));
     parts.forEach((p,i)=>{let s=p;if(i===parts.length-1)s=s.replace(/\|+\s*$/,"");bubbles[i]._tx.textContent=s.trim();});scroll();}
-  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,session_id:currentSid,bedroom:BD,model:selectedModel||undefined})});
+  const diaryRequestId=pendingDiaryRequestId||undefined;
+  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,session_id:currentSid,bedroom:BD,model:selectedModel||undefined,diary_request_id:diaryRequestId})});
   const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
-  while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}}catch(_){}}}
+  while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
+  if(diaryRequestId)pendingDiaryRequestId=0;
   b.classList.remove("typing");
   if(!acc){b._tx.textContent="（没有回应，再试一次~）";return;}
   while(bubbles.length>1&&!bubbles[bubbles.length-1]._tx.textContent){bubbles.pop().parentElement.remove();}
@@ -605,7 +608,16 @@ applyWallpaper((()=>{try{return localStorage.getItem("wallpaper")||"";}catch(_){
 function boot(){
   loadWhoami();
   if(currentSid!==1){api("/api/sessions").then(r=>r.json()).then(a=>{const s=a.find(x=>x.id===currentSid);if(s)$("#hdrTitle").textContent=s.name;else setSid(1);}).catch(()=>{});}
-  loadMsgs(); if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{});}}
+  loadMsgs();
+  const bootParams=new URLSearchParams(location.search);
+  const diaryId=Number(bootParams.get("diary_request")||0);
+  const drawerRequest=bootParams.get("drawer_request")==="1";
+  if(diaryId){api("/api/diary/request?id="+encodeURIComponent(diaryId)).then(r=>r.json()).then(d=>{
+    if(d&&d.id&&!d.revealed){pendingDiaryRequestId=d.id;$("#input").value=d.ask_text||"爸爸，把你锁着的那一页给我看。";$("#input").focus();toast("这页得亲自向柯要");}
+  }).catch(()=>{});}
+  else if(drawerRequest){$("#input").value="爸爸，我刚去看了你的抽屉。里面藏了什么？";$("#input").focus();toast("想知道，就亲自问柯");}
+  if(diaryId||drawerRequest)history.replaceState({},"",location.pathname+location.hash);
+  if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{});}}
 boot();
 </script>
 </body>
