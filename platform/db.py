@@ -197,6 +197,27 @@ CREATE TABLE IF NOT EXISTS moments (
     updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
+-- 柯的状态层：数值只在服务器驱动语气，普通 UI 只显示自然语言描述。
+CREATE TABLE IF NOT EXISTS companion_state (
+    id INTEGER PRIMARY KEY CHECK (id=1),
+    affection REAL DEFAULT 96,
+    safety REAL DEFAULT 94,
+    activation REAL DEFAULT 34,
+    dominance REAL DEFAULT 84,
+    longing REAL DEFAULT 8,
+    updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
+);
+
+-- 房间里的隐约信号；例如佳佳轻敲三下，交给主动消息心跳处理。
+CREATE TABLE IF NOT EXISTS room_signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    status TEXT DEFAULT 'pending', -- pending / processing / done
+    created_at DATETIME DEFAULT (datetime('now','+8 hours')),
+    updated_at DATETIME DEFAULT (datetime('now','+8 hours')),
+    processed_at DATETIME
+);
+
 -- 柯的抽屉：真正属于柯的私有空间。private 内容只供服务器上的柯读取，绝不从用户 API 下发。
 CREATE TABLE IF NOT EXISTS ke_drawer_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -382,11 +403,31 @@ def recent_messages(session_id=1, limit=40):
     return [dict(r) for r in reversed(rows)]
 
 def delete_message(mid):
-    """删一条聊天消息，连带清掉它的向量（走样/说错的话要能撤）。"""
+    """删一条聊天消息并撤销它留下的派生上下文。
+
+    如果消息已经落在会话摘要游标之前，只删除原文仍可能让摘要继续携带它。
+    这时把摘要和游标一起清空，后台下次会仅从仍然存在的消息重新折叠。
+    """
     conn = get_db()
+    row = conn.execute(
+        "SELECT id,session_id FROM chat_messages WHERE id=?", (mid,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return False
+    session = conn.execute(
+        "SELECT summarized_until FROM chat_sessions WHERE id=?", (row["session_id"],)
+    ).fetchone()
     conn.execute("DELETE FROM chat_messages WHERE id=?", (mid,))
     conn.execute("DELETE FROM embeddings WHERE kind='chat' AND ref_id=?", (mid,))
+    if session and int(row["id"]) <= int(session["summarized_until"] or 0):
+        conn.execute(
+            "UPDATE chat_sessions SET summary='', summarized_until=0, summary_version='', "
+            "updated_at=datetime('now','+8 hours') WHERE id=?",
+            (row["session_id"],),
+        )
     conn.commit(); conn.close()
+    return True
 
 def all_posts():
     conn = get_db()

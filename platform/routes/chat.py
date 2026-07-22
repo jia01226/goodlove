@@ -7,6 +7,7 @@ from flask import Blueprint, Response, jsonify, request, send_from_directory
 import db
 import chat_ai
 import moments_ai
+import relationship_state
 from constants import (STATIC_DIR, MAIN_SESSION, SESSION_NAME_MAXLEN,
                        DEFAULT_SESSION_NAME, USAGE_TAG, THINK_TAG,
                        SSE_CONTENT_TYPE, SSE_HEADERS)
@@ -89,6 +90,10 @@ def api_chat():
     model, gateway_base, gateway_key = chat_ai.resolve_gateway(data.get("model"))
     user_message_id = db.add_message("user", text, session_id=sid, image=image,
                                      msg_type=("image" if image else "text"), model=model)
+    try:
+        relationship_state.observe("user", text=text, bedroom=bedroom)
+    except Exception as exc:
+        logger.warning("状态层记录用户消息失败：%s", exc)
     history = db.recent_messages(session_id=sid)
     diary_request = None
     try:
@@ -184,6 +189,10 @@ def api_chat():
                     logger.warning("柯评论朋友圈失败：%s", e)
             if clean_acc:
                 assistant_message_id = db.add_message("assistant", clean_acc, session_id=sid, model=model)
+                try:
+                    relationship_state.observe("assistant", text=clean_acc, bedroom=bedroom)
+                except Exception as exc:
+                    logger.warning("状态层记录柯回复失败：%s", exc)
         yield ("data: " + json.dumps({"done": True, "moment": posted_moment,
                                        "diary_unlocked": unlocked_diary,
                                        "assistant_message_id": assistant_message_id}, ensure_ascii=False) + "\n\n").encode("utf-8")

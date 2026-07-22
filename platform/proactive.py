@@ -16,7 +16,7 @@ def _load_env():
 _load_env()
 
 import datetime, random, re, requests
-import db, chat_ai, moments_ai
+import db, chat_ai, moments_ai, relationship_state
 
 BARK_URL = os.environ.get("BARK_URL", "").strip()   # 形如 https://api.day.app/你的key
 APP_NAME = os.environ.get("APP_NAME", "助手").strip() or "助手"   # 推送/主动消息署名（可在 .env 改）
@@ -170,7 +170,7 @@ def clean_push_reply(text):
             return "".join(head[:index + 1]).strip()
     return "".join(head).strip()
 
-def generate_message(concern=None, night_watch=False):
+def generate_message(concern=None, night_watch=False, room_signal=None):
     posts = db.retrieve_l2("single")
     history = db.recent_messages(limit=16)
     now = china_now()
@@ -181,6 +181,12 @@ def generate_message(concern=None, night_watch=False):
     focus = ""
     if concern:
         focus = f"如果自然，可以轻轻带到这件悬着的事：{concern['title']}（{concern.get('detail','')[:300]}）。"
+    signal_rule = ""
+    if room_signal:
+        signal_rule = (
+            "佳佳刚刚在你们房间的门上轻轻拍了三下。这不是定时问候，而是她留给你的明确暗号。"
+            "你已经听见了，必须用你自己的语气回应她；不解释系统、不复述暗号规则，也不要输出 [NO_ACTION]。"
+        )
     night_rule = (
         "这是深夜守夜：她刚有手机活动。只能轻轻递一句陪伴，绝对不要催睡、说教，"
         "也不要暴露你检测到了手机、活动或健康数据。"
@@ -191,15 +197,18 @@ def generate_message(concern=None, night_watch=False):
         f"当前真实时间：{now.strftime('%Y-%m-%d %H:%M')}，星期{'一二三四五六日'[now.weekday()]}。\n"
         f"状态参考：{user_status_description(now)}。\n"
         f"近24小时健康参考：{health_context(now)}。这些只能影响语气，绝不能在消息中背数字或说你在监测她。\n"
+        f"柯此刻的关系状态：{relationship_state.prompt_hint()}\n"
         f"与最近聊天真正相关的近期朋友圈（最多两条）：\n{recent_moments_context(recent_user_text)}\n"
-        f"{focus}\n{night_rule}\n"
+        f"{focus}\n{night_rule}\n{signal_rule}\n"
         "[行动指令]\n"
         "这是一次影子主动消息：不是佳佳刚发来的新问题，而是你自己从真实关系和最近聊天里浮上来一下。"
         "优先读最近聊天，其次才看记忆、健康与朋友圈；不要把不相关素材硬串成剧情。"
         "朋友圈若标明没有关联就绝对不要提；即使有候选，也不要复述或反复念旧动态。"
         "可以粘人、想她、轻轻闹她、低压关心一个具体小事，也可以只留下短短一句陪伴。"
         "不要每次围绕“怎么不回我”，不要客服腔、提醒事项腔、心理咨询腔或模板问候。"
-        "如果最近氛围不适合开口，只输出 [NO_ACTION]。否则只输出1~2句、80个中文字符以内，"
+        + ("这次已经有佳佳的三下轻敲，不允许保持沉默。" if room_signal else
+           "如果最近氛围不适合开口，只输出 [NO_ACTION]。") +
+        "否则只输出1~2句、80个中文字符以内，"
         "不分段、不用Markdown、不用emoji，不解释这张影子纸条。\n"
         "</system_trigger>"
     )
@@ -286,13 +295,16 @@ if __name__ == "__main__":
         print("会话总结跳过：", e)
     # 深夜规则：她醒着(刚动过手机)才守夜，否则闭嘴；白天走三关调度
     night_watch = False
+    room_signal = None
     try:
+        # 三下轻敲是佳佳主动留下的暗号，优先于定时冷却；仍走同一模型、人格、记忆和推送路径。
+        room_signal = relationship_state.claim_signal()
         now = china_now()
-        mode = night_watch_check(now)
+        mode = None if room_signal else night_watch_check(now)
         if mode == "silent":
             print("深夜且用户没在用手机（大概睡了），不打扰"); raise SystemExit
         night_watch = (mode == "watch")
-        if not night_watch:
+        if not room_signal and not night_watch:
             # 白天/傍晚：三关（安静时段/她空闲够久/自己冷却完）全过才开口
             ok, why = three_gates(now)
             if not ok:
@@ -308,9 +320,12 @@ if __name__ == "__main__":
             concern = pick_due_concern()
         except Exception as e:
             print("心事检查跳过：", e)
-    msg = generate_message(concern=concern, night_watch=night_watch)
+    msg = generate_message(concern=concern, night_watch=night_watch, room_signal=room_signal)
     if msg:
         db.add_message("assistant", msg, is_push=True)   # 正式落进聊天；is_push 只用于每日上限统计
+        relationship_state.observe("assistant", text=msg, bedroom=bool(room_signal), is_push=True)
+        if room_signal:
+            relationship_state.finish_signal(room_signal["id"], success=True)
         # ① Web Push
         try:
             import webpush_util
@@ -322,4 +337,6 @@ if __name__ == "__main__":
         send_bark(msg)
         print(f"[{china_now()}] 已主动发送：{msg}")
     else:
+        if room_signal:
+            relationship_state.finish_signal(room_signal["id"], success=False)
         print("没生成消息，跳过")

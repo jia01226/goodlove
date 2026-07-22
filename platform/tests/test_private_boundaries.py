@@ -3,6 +3,7 @@
 所有数据都写入系统临时目录中的一次性 SQLite；不会读取或修改正式 memories.db。
 """
 import importlib
+import datetime
 import os
 import sys
 import tempfile
@@ -89,8 +90,70 @@ class PrivateBoundaryTests(unittest.TestCase):
         message_id = self.db.add_message("assistant", "这是一条临时测试回复", session_id=1)
         self.assertIsInstance(message_id, int)
         self.assertIn(message_id, [item["id"] for item in self.db.recent_messages(1)])
-        self.db.delete_message(message_id)
+        self.assertTrue(self.db.delete_message(message_id))
         self.assertNotIn(message_id, [item["id"] for item in self.db.recent_messages(1)])
+
+    def test_deleting_summarized_message_invalidates_derived_summary(self):
+        first = self.db.add_message("user", "只用于测试的旧消息", session_id=1)
+        self.db.add_message("assistant", "只用于测试的旧回复", session_id=1)
+        self.db.set_session_summary(1, "由临时消息产生的旧摘要", first, "test-version")
+
+        self.assertTrue(self.db.delete_message(first))
+        session = self.db.get_session(1)
+        self.assertEqual(session["summary"], "")
+        self.assertEqual(session["summarized_until"], 0)
+        self.assertEqual(session["summary_version"], "")
+
+    def test_deleting_unsummarized_message_keeps_valid_summary(self):
+        first = self.db.add_message("user", "已经被摘要的测试消息", session_id=1)
+        self.db.set_session_summary(1, "仍然有效的旧摘要", first, "test-version")
+        latest = self.db.add_message("assistant", "尚未进入摘要的新回复", session_id=1)
+
+        self.assertTrue(self.db.delete_message(latest))
+        session = self.db.get_session(1)
+        self.assertEqual(session["summary"], "仍然有效的旧摘要")
+        self.assertEqual(session["summarized_until"], first)
+
+    def test_relationship_state_only_exposes_human_words(self):
+        import relationship_state
+
+        state = importlib.reload(relationship_state)
+        view = state.public_view()
+        self.assertEqual(set(view), {"presence", "tide", "lead", "note", "relationship"})
+        self.assertTrue(all(isinstance(value, str) and value for value in view.values()))
+        self.assertFalse(any(isinstance(value, (int, float)) for value in view.values()))
+
+    def test_three_taps_queue_one_recoverable_signal(self):
+        import relationship_state
+
+        state = importlib.reload(relationship_state)
+        first = state.queue_signal("triple_tap")
+        second = state.queue_signal("triple_tap")
+        self.assertEqual(first, second)
+        claimed = state.claim_signal()
+        self.assertEqual(claimed["id"], first)
+        state.finish_signal(first, success=False)
+        retried = state.claim_signal()
+        self.assertEqual(retried["id"], first)
+        state.finish_signal(first, success=True)
+        self.assertIsNone(state.claim_signal())
+
+    def test_moments_recall_is_relevant_recent_and_deletable(self):
+        import moments_ai
+
+        moments = importlib.reload(moments_ai)
+        old_id = self.db.add_moment("user", "买猫粮时想起那只橘猫", reply_status="done")
+        recent_id = self.db.add_moment("user", "今天买猫粮时又想起那只橘猫", reply_status="done")
+        self.db.add_moment("user", "窗外的晚霞很好看", reply_status="done")
+        conn = self.db.get_db()
+        old_time = (moments.china_now() - datetime.timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("UPDATE moments SET created_at=? WHERE id=?", (old_time, old_id))
+        conn.commit(); conn.close()
+
+        related = moments.related_moments("猫粮快没有了", limit=2, max_age_days=14)
+        self.assertEqual([item["id"] for item in related], [recent_id])
+        self.db.delete_moment(recent_id)
+        self.assertEqual(moments.related_moments("猫粮快没有了", limit=2, max_age_days=14), [])
 
     def test_current_quality_guard_is_after_legacy_private_rules(self):
         """模拟服务器仍有旧 3000 字规则，确认新版护栏最终覆盖它。"""
@@ -159,6 +222,12 @@ class IntimatePromptContractTests(unittest.TestCase):
     def test_lazy_time_skips_are_forbidden(self):
         self.assertIn("不知过了多久", self.source)
         self.assertIn("不得用模糊时间跳跃偷工", self.source)
+
+    def test_living_voice_rule_rejects_assistant_templates(self):
+        self.assertIn("活人感与表达节奏", self.source)
+        self.assertIn("不要先复述问题", self.source)
+        self.assertIn("不把佳佳当病人", self.source)
+        self.assertIn("不为了显得深情而重复旧记忆", self.source)
 
     def test_bad_first_draft_is_not_released_before_rewrite(self):
         previous_requests = sys.modules.get("requests")

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F7F1EE"><title>柯的房间</title>
+<link rel="stylesheet" href="/static/luxury-quiet.css">
+<style>
+:root{--bg:#faf7f4;--paper:#fffdfb;--ink:#574c4c;--soft:#9f9290;--rose:#aa747d;--rose-deep:#896169;--pink:#f6e8e9;--line:rgba(112,83,81,.11)}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#f3e9e5,#f8f3f0 36%,#faf8f5);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+button,a{font:inherit;-webkit-tap-highlight-color:transparent}.shell{width:min(100%,520px);min-height:100dvh;margin:auto;padding-bottom:calc(42px + env(safe-area-inset-bottom))}
+.top{position:sticky;top:0;z-index:10;display:grid;grid-template-columns:48px 1fr 48px;align-items:center;min-height:76px;padding:10px 15px;border-bottom:1px solid var(--line);background:rgba(248,243,240,.88);backdrop-filter:blur(22px)}
+.back{display:grid;width:44px;height:44px;place-items:center;border:1px solid var(--line);border-radius:50%;background:rgba(255,255,255,.72);color:#8e7978;text-decoration:none;font-size:25px}.title{text-align:center}.title h1{margin:0;font:600 20px Georgia,"Songti SC",serif;color:#6f565a}.title p{margin:5px 0 0;color:#aa9c99;font-size:9px;letter-spacing:.18em}
+.ambient{position:relative;height:252px;overflow:hidden;background:linear-gradient(150deg,#e8d8d2,#f4e9e4 58%,#fbf7f3)}.ambient:before{content:"";position:absolute;left:-50px;bottom:-115px;width:330px;height:245px;border-radius:50%;background:#fffaf7}.ambient:after{content:"";position:absolute;right:-38px;bottom:-84px;width:260px;height:210px;border-radius:50%;background:#e1cbc3}
+.lamp{position:absolute;right:54px;top:43px;width:68px;height:57px;border-radius:50% 50% 12px 12px;background:linear-gradient(180deg,#faeadb,#d2b59c);box-shadow:0 0 54px rgba(235,190,143,.55)}.lamp:after{content:"";position:absolute;left:31px;top:52px;width:5px;height:78px;border-radius:4px;background:#aa8973}
+.ambient-copy{position:absolute;z-index:2;left:25px;top:43px}.ambient-copy small{color:#aa9692;font-size:9px;letter-spacing:.22em}.ambient-copy h2{margin:15px 0 9px;color:#675053;font:italic 500 29px/1.15 Georgia,"Songti SC",serif}.ambient-copy p{margin:0;color:#978481;font-size:11px;line-height:1.75}.status-chip{position:absolute;z-index:3;left:24px;bottom:20px;display:inline-flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid rgba(170,116,125,.1);border-radius:13px;background:rgba(255,255,255,.67);color:#8f7477;font-size:10px}.status-chip i{width:6px;height:6px;border-radius:50%;background:#d5a5aa}
+.content{padding:17px}.section-title{margin:23px 4px 12px;color:#aea19e;font-size:10px;font-weight:400;letter-spacing:.24em}.state-card,.wide-card,.small-card{border:1px solid var(--line);background:rgba(255,255,255,.83);box-shadow:0 10px 30px rgba(74,54,53,.035)}
+.state-card{padding:19px;border-radius:20px}.state-head{display:flex;align-items:center;justify-content:space-between}.state-head b{color:#6f595b;font-size:14px}.state-head span{color:#af9e9b;font-size:10px}.state-note{margin:12px 0 0;color:#8f817f;font-size:12px;line-height:1.75}.state-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}.state-grid div{padding:13px 7px;border-radius:15px;background:#faf5f3;text-align:center}.state-grid b{display:block;color:#775f63;font-size:12px;font-weight:500}.state-grid span{display:block;margin-top:5px;color:#b0a3a0;font-size:9px}
+.wide-card{position:relative;display:block;min-height:133px;padding:22px 122px 22px 20px;border-radius:22px;color:inherit;text-decoration:none;overflow:hidden}.wide-card h3{margin:0 0 8px;color:#6f5559;font:italic 500 24px Georgia,"Songti SC",serif}.wide-card p{margin:0;color:#998885;font-size:11px;line-height:1.75}.door{position:absolute;right:28px;bottom:17px;width:72px;height:103px;border:1px solid rgba(105,78,76,.14);border-radius:36px 36px 10px 10px;background:linear-gradient(90deg,#dbc4ba,#f3e5df 50%,#cab0a5)}.door:after{content:"";position:absolute;left:15px;bottom:31px;width:6px;height:6px;border-radius:50%;background:#a98770}
+.small-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.small-card{min-height:128px;padding:18px;border-radius:20px;color:inherit;text-decoration:none}.small-card .mark{display:grid;width:37px;height:37px;place-items:center;border-radius:13px;background:var(--pink);color:var(--rose-deep)}.small-card b{display:block;margin-top:16px;font-size:13px}.small-card p{margin:6px 0 0;color:#a19491;font-size:10px;line-height:1.65}
+.knock-zone{margin-top:24px;padding:18px 12px 7px;text-align:center}.knock{min-width:64px;min-height:48px;border:0;background:transparent;color:#c5b3b1;font:24px Georgia,serif;letter-spacing:.22em}.knock-hint{margin:3px 0 0;color:#c0b4b1;font-size:9px;letter-spacing:.12em}.signal{min-height:18px;margin-top:9px;color:#95767a;font-size:11px}
+.sheet-shade{display:none;position:fixed;z-index:30;inset:0;background:rgba(67,48,47,.18)}.sheet-shade.on{display:block}.sheet{position:fixed;z-index:31;left:50%;bottom:0;translate:-50% 105%;width:min(100%,520px);padding:11px 20px calc(27px + env(safe-area-inset-bottom));border-radius:24px 24px 0 0;background:#fffdfa;box-shadow:0 -18px 60px rgba(64,45,44,.16);transition:.24s ease}.sheet.open{translate:-50% 0}.handle{width:38px;height:4px;margin:0 auto 18px;border-radius:4px;background:#e4d9d6}.sheet h3{margin:0;color:#6e5659;font:600 18px Georgia,"Songti SC",serif}.sheet p{margin:8px 0 17px;color:#9d9290;font-size:11px;line-height:1.7}.sheet button{width:100%;min-height:47px;border:0;border-radius:15px;background:var(--pink);color:var(--rose-deep)}
+@media(min-width:700px){.shell{margin-top:18px;margin-bottom:18px;min-height:900px;border-radius:27px;overflow:hidden;box-shadow:0 18px 55px rgba(73,51,49,.08)}}
+</style>
+</head>
+<body><main class="shell">
+  <header class="top"><a class="back" href="/" aria-label="回到我们">‹</a><div class="title"><h1>柯的房间</h1><p>门里门外，都是同一个他</p></div><span></span></header>
+  <section class="ambient"><div class="lamp"></div><div class="ambient-copy"><small>只 属 于 我 们</small><h2>柯在这里。</h2><p>不是切换成另一个人。<br>只是把外面的声音关小。</p></div><button class="status-chip" id="statusChip" type="button" onclick="openState()"><i></i><span>正在看看他此刻的状态</span></button></section>
+  <div class="content">
+    <div class="section-title">柯 现 在</div>
+    <section class="state-card"><div class="state-head"><b id="presence">就在家里</b><span>不会显示后台分数</span></div><p class="state-note" id="stateNote">同一个柯，带着你们已经过过的日子待在这里。</p><div class="state-grid"><div><b id="tide">安静地亮着</b><span>今晚的潮汐</span></div><div><b id="lead">主导感很稳</b><span>他的底色</span></div><div><b id="relation">亲密而稳定</b><span>你们之间</span></div></div></section>
+    <div class="section-title">房 间 里</div>
+    <a class="wide-card" href="/?room=1"><h3>把门关上</h3><p>进入同一段聊天。亲密时不拆成短泡泡，也不重新认识彼此。</p><span class="door" aria-hidden="true"></span></a>
+    <div class="section-title">调 教 与 游 戏</div>
+    <div class="small-grid"><a class="small-card" href="/protocol"><span class="mark">⌁</span><b>今日安排</b><p>柯留给你的功课与日常任务，都从这里接。</p></a><a class="small-card" href="/?room=1&draft=今晚玩什么由你决定。"><span class="mark">◇</span><b>让柯开一局</b><p>玩法和节奏交给他，不把房间做成后台菜单。</p></a><a class="small-card" href="/drawer"><span class="mark">▤</span><b>柯的抽屉</b><p>你知道它存在，但只有他拿出来的东西才看得见。</p></a><button class="small-card" type="button" onclick="drawCard()"><span class="mark">♡</span><b>抽一张互动牌</b><p id="cardCopy">只给一个开头，接下来由柯决定。</p></button></div>
+    <div class="knock-zone"><button class="knock" id="knock" type="button" aria-label="轻轻拍三下">···</button><p class="knock-hint">有些暗号，不必写得很明显</p><div class="signal" id="signal"></div></div>
+  </div>
+</main>
+<div class="sheet-shade" id="shade" onclick="closeState()"></div><aside class="sheet" id="sheet"><div class="handle"></div><h3 id="sheetTitle">今晚的潮汐</h3><p id="sheetText">状态只帮助柯决定怎样靠近，不会把你们的关系变成数值面板。</p><button type="button" onclick="closeState()">收好</button></aside>
+<script src="/static/app-core.js?v=20260722h"></script>
+<script>
+const api=(path,opt)=>window.Goodlove?Goodlove.api(path,opt):fetch(path,opt);
+const el={presence:document.getElementById('presence'),tide:document.getElementById('tide'),lead:document.getElementById('lead'),relation:document.getElementById('relation'),stateNote:document.getElementById('stateNote'),statusChip:document.getElementById('statusChip'),sheetTitle:document.getElementById('sheetTitle'),sheetText:document.getElementById('sheetText'),sheet:document.getElementById('sheet'),shade:document.getElementById('shade'),cardCopy:document.getElementById('cardCopy'),knock:document.getElementById('knock'),signal:document.getElementById('signal')};
+async function loadState(){try{const r=await api('/api/room/state');if(!r.ok)return;const s=await r.json();el.presence.textContent=s.presence;el.tide.textContent=s.tide;el.lead.textContent=s.lead;el.relation.textContent=s.relationship;el.stateNote.textContent=s.note;el.statusChip.querySelector('span').textContent=s.presence+' · '+s.tide;}catch(_){}}
+function openState(){el.sheetTitle.textContent=el.presence.textContent+'，'+el.tide.textContent;el.sheetText.textContent=el.stateNote.textContent+' 状态只帮助柯决定怎样靠近，不会把你们的关系做成数字面板。';el.sheet.classList.add('open');el.shade.classList.add('on');}
+function closeState(){el.sheet.classList.remove('open');el.shade.classList.remove('on');}
+const cards=['把今天最皮的一件事亲口告诉柯。','先去找柯，让他替今晚定一条小规矩。','挑一件一直想试、却还没说完的事交给柯。','什么都不选。只进去，等他的第一句话。'];let cardIndex=0;
+function drawCard(){cardIndex=(cardIndex+1)%cards.length;el.cardCopy.textContent=cards[cardIndex];}
+let taps=0,timer=0,busy=false;
+el.knock.addEventListener('click',async()=>{if(busy)return;clearTimeout(timer);taps++;timer=setTimeout(()=>taps=0,1100);if(taps<3)return;taps=0;busy=true;el.signal.textContent='他听见了。';try{const r=await api('/api/room/signal',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:'triple_tap'})});if(!r.ok)throw 0;localStorage.setItem('bd','1');el.signal.textContent='柯听见了。接下来，由他来找你。';loadState();}catch(_){el.signal.textContent='这次没有敲响，再试一次。';}finally{busy=false;}});
+loadState();
+</script></body></html>

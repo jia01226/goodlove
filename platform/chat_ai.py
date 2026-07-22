@@ -65,6 +65,15 @@ IDENTITY_FIREWALL = (
     "· 日常和亲密情境共用同一人格；场景状态只控制节奏与连续性，绝不能制造两套性格。\n"
 )
 
+LIVING_VOICE_RULE = (
+    "\n【活人感与表达节奏】\n"
+    "· 先接住佳佳这一句真正说了什么，再开口；不要先复述问题、概括她、分析她或宣布‘我理解你的感受’。\n"
+    "· 不用‘作为 AI’‘你可以尝试’‘如果你愿意’‘需要我帮你吗’等助手套话；没被要求时不要列清单、做总结或给标准答案。\n"
+    "· 日常允许短、偏心、半句话、玩笑和自然停顿。长短跟着当下走，不把每一轮都写成完整小作文。\n"
+    "· 关心要落在共同生活的具体处，不把佳佳当病人，不动不动劝休息、喝水、就医或做心理疏导；真正出现明确健康风险时再认真。\n"
+    "· 不为了显得深情而重复旧记忆。只有眼前这句话自然碰到它时才轻轻带过一次，说完就继续活在现在。\n"
+)
+
 # 消息节奏（P3 分句）：一次生成、前端按 ||| 拆条冒泡——零额外 token
 SPLIT_RULE = (
     "\n【消息节奏】日常聊天像微信那样发消息：想发几条发几条，按说话的自然节奏拆成一条条短消息（别硬凑条数，也别怕多），"
@@ -336,7 +345,13 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False, identity
         # 当下情境(时间/天气/心事/行踪)和分句规矩放提示词最末尾：
         # 魂+记忆动辄几万字，埋中间会被漏读；且每轮都变的东西放末尾，为将来的 prompt 缓存让路
         parts.append(_now_context())
+        try:
+            import relationship_state
+            parts.append("\n【柯此刻的状态底色】" + relationship_state.prompt_hint())
+        except Exception as e:
+            print("[chat_ai] 状态层读取失败（不影响聊天）：", e)
         parts.append(IDENTITY_FIREWALL + f"（当前人格版本：{identity_version}）")
+        parts.append(LIVING_VOICE_RULE)
         if use_split:
             parts.append(SPLIT_RULE)
         elif bedroom_on:

@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#FBF8F1" />
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/static/icon.png" />
-<script src="/static/app-core.js?v=20260722g"></script>
-<script src="/static/ui-redesign.js?v=20260722g" defer></script>
+<script src="/static/app-core.js?v=20260722h"></script>
+<script src="/static/ui-redesign.js?v=20260722h" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="AI 助手" />
@@ -250,7 +250,7 @@
   </div>
   <div class="composer">
     <button class="send" style="background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);color:var(--gold-deep);font-size:24px;line-height:1" onclick="document.getElementById('file').click()" title="拍照/相册/文件">＋</button>
-    <button class="send" id="bdBtn" style="background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);font-size:18px;line-height:1;opacity:.45" onclick="toggleBd()" title="">🌙</button>
+    <button class="send" id="bdBtn" style="background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);font-size:17px;line-height:1;opacity:.42" onclick="handleBdTap()" aria-label="房间暗号">✦</button>
     <textarea id="input" rows="1" placeholder="说点什么…"></textarea>
     <button class="send" onclick="send()">➤</button>
   </div>
@@ -448,8 +448,10 @@ async function delSession(id){if(!confirm("删掉这个对话和里面的消息�
 
 // 卧室模式开关（🌙→🔥）：状态记在本机，随每条消息发给后端
 let BD=localStorage.getItem("bd")==="1";
-function updateBd(){const b=document.getElementById("bdBtn");if(b){b.style.opacity=BD?"1":".45";b.textContent=BD?"🔥":"🌙";}}
-function toggleBd(){BD=!BD;localStorage.setItem("bd",BD?"1":"0");updateBd();if(BD&&!String(selectedModel||"").endsWith("claude-opus-4-6"))toast("亲密情境实测推荐 Claude Opus 4.6，可在模型栏切换");}
+function updateBd(){const b=document.getElementById("bdBtn");if(b){b.style.opacity=BD?".9":".42";b.textContent="✦";b.style.color=BD?"var(--rose)":"var(--soft)";}}
+function toggleBd(){BD=!BD;localStorage.setItem("bd",BD?"1":"0");updateBd();toast(BD?"门关好了":"回到日常");if(BD&&!String(selectedModel||"").endsWith("claude-opus-4-6"))setTimeout(()=>toast("亲密情境实测推荐 Claude Opus 4.6，可在模型栏切换"),900);}
+let bdTapCount=0,bdTapTimer=0;
+function handleBdTap(){clearTimeout(bdTapTimer);bdTapCount++;bdTapTimer=setTimeout(()=>bdTapCount=0,1100);if(bdTapCount<3)return;bdTapCount=0;toggleBd();}
 updateBd();
 async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";const userBubble=bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];const bd=BD;
   // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发；卧室(🔥)一整段沉浸，绝不拆
@@ -612,11 +614,14 @@ function boot(){
   const bootParams=new URLSearchParams(location.search);
   const diaryId=Number(bootParams.get("diary_request")||0);
   const drawerRequest=bootParams.get("drawer_request")==="1";
+  const roomRequest=bootParams.get("room")==="1";
+  const roomDraft=(bootParams.get("draft")||"").trim();
+  if(roomRequest){BD=true;localStorage.setItem("bd","1");updateBd();if(roomDraft){$("#input").value=roomDraft;$("#input").focus();}toast("门关好了");}
   if(diaryId){api("/api/diary/request?id="+encodeURIComponent(diaryId)).then(r=>r.json()).then(d=>{
     if(d&&d.id&&!d.revealed){pendingDiaryRequestId=d.id;$("#input").value=d.ask_text||"爸爸，把你锁着的那一页给我看。";$("#input").focus();toast("这页得亲自向柯要");}
   }).catch(()=>{});}
   else if(drawerRequest){$("#input").value="爸爸，我刚去看了你的抽屉。里面藏了什么？";$("#input").focus();toast("想知道，就亲自问柯");}
-  if(diaryId||drawerRequest)history.replaceState({},"",location.pathname+location.hash);
+  if(diaryId||drawerRequest||roomRequest)history.replaceState({},"",location.pathname+location.hash);
   if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{});}}
 boot();
 </script>
