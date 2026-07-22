@@ -368,9 +368,10 @@ def init_db():
 # ---- 便捷读写 ----
 def add_message(author, content, session_id=1, msg_type="text", image="", is_push=False, model=""):
     conn = get_db()
-    conn.execute("INSERT INTO chat_messages (session_id,author,content,msg_type,image,is_push,model) VALUES (?,?,?,?,?,?,?)",
-                 (session_id, author, content, msg_type, image, 1 if is_push else 0, model or ""))
-    conn.commit(); conn.close()
+    cur = conn.execute("INSERT INTO chat_messages (session_id,author,content,msg_type,image,is_push,model) VALUES (?,?,?,?,?,?,?)",
+                       (session_id, author, content, msg_type, image, 1 if is_push else 0, model or ""))
+    conn.commit(); mid = cur.lastrowid; conn.close()
+    return mid
 
 def recent_messages(session_id=1, limit=40):
     conn = get_db()

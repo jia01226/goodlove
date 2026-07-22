@@ -85,6 +85,13 @@ class PrivateBoundaryTests(unittest.TestCase):
         self.assertNotIn("另一张锁页", repr(view))
         self.assertNotIn("仍然是假正文", repr(view))
 
+    def test_new_message_returns_id_and_can_be_deleted_immediately(self):
+        message_id = self.db.add_message("assistant", "这是一条临时测试回复", session_id=1)
+        self.assertIsInstance(message_id, int)
+        self.assertIn(message_id, [item["id"] for item in self.db.recent_messages(1)])
+        self.db.delete_message(message_id)
+        self.assertNotIn(message_id, [item["id"] for item in self.db.recent_messages(1)])
+
     def test_current_quality_guard_is_after_legacy_private_rules(self):
         """模拟服务器仍有旧 3000 字规则，确认新版护栏最终覆盖它。"""
         fake_bedroom = types.SimpleNamespace(

@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#FBF8F1" />
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/static/icon.png" />
-<script src="/static/app-core.js?v=20260722f"></script>
-<script src="/static/ui-redesign.js?v=20260722f" defer></script>
+<script src="/static/app-core.js?v=20260722g"></script>
+<script src="/static/ui-redesign.js?v=20260722g" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="AI 助手" />
@@ -334,7 +334,7 @@ function attachThinkingSummary(bb,steps){if(!bb||bb._thinkingRow)return;
   bb._thinkingRow=row;bb._thinkingCard=card;
 }
 // 长按(手机)/右键(电脑)弹菜单：普通界面只说人话，不露记忆检索字段。
-function bindLongPress(el,mid,role){let tm=null;const cancel=()=>{if(tm)clearTimeout(tm);tm=null;};
+function bindLongPress(el,mid,role){if(!el||!mid||el._messageMenuBound)return;el._messageMenuBound=true;el._messageId=mid;let tm=null;const cancel=()=>{if(tm)clearTimeout(tm);tm=null;};
   el.addEventListener("touchstart",()=>{tm=setTimeout(()=>{cancel();showMsgMenu(el,mid,role);},600);},{passive:true});
   el.addEventListener("touchend",cancel);el.addEventListener("touchmove",cancel);
   el.addEventListener("contextmenu",e=>{e.preventDefault();showMsgMenu(el,mid,role);});}
@@ -451,7 +451,7 @@ let BD=localStorage.getItem("bd")==="1";
 function updateBd(){const b=document.getElementById("bdBtn");if(b){b.style.opacity=BD?"1":".45";b.textContent=BD?"🔥":"🌙";}}
 function toggleBd(){BD=!BD;localStorage.setItem("bd",BD?"1":"0");updateBd();if(BD&&!String(selectedModel||"").endsWith("claude-opus-4-6"))toast("亲密情境实测推荐 Claude Opus 4.6，可在模型栏切换");}
 updateBd();
-async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];const bd=BD;
+async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";const userBubble=bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];const bd=BD;
   // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发；卧室(🔥)一整段沉浸，绝不拆
   function paint(){
     if(bd){b._tx.textContent=acc.replace(/\s*\|\|\|\s*/g,"\n").replace(/\|+\s*$/,"").trim();scroll();return;}
@@ -461,7 +461,7 @@ async function send(){const t=$("#input").value.trim();const img=pending?pending
   const diaryRequestId=pendingDiaryRequestId||undefined;
   const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,session_id:currentSid,bedroom:BD,model:selectedModel||undefined,diary_request_id:diaryRequestId})});
   const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
-  while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
+  while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.user_message_id)bindLongPress(userBubble,e.user_message_id,"user");if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.assistant_message_id)bubbles.forEach(bb=>bindLongPress(bb,e.assistant_message_id,"assistant"));if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
   if(diaryRequestId)pendingDiaryRequestId=0;
   b.classList.remove("typing");
   if(!acc){b._tx.textContent="（没有回应，再试一次~）";return;}

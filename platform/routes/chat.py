@@ -87,8 +87,8 @@ def api_chat():
     if bedroom:
         logger.info("[bedroom] 前端的卧室开关已送达后端")
     model, gateway_base, gateway_key = chat_ai.resolve_gateway(data.get("model"))
-    db.add_message("user", text, session_id=sid, image=image,
-                   msg_type=("image" if image else "text"), model=model)
+    user_message_id = db.add_message("user", text, session_id=sid, image=image,
+                                     msg_type=("image" if image else "text"), model=model)
     history = db.recent_messages(session_id=sid)
     diary_request = None
     try:
@@ -123,6 +123,7 @@ def api_chat():
 
     def gen():
         acc = ""
+        assistant_message_id = None
         marker_hold = ""
         unlocked_diary = []
         def _hide_unlock(match):
@@ -140,7 +141,8 @@ def api_chat():
             public_thought = "我想把你现在的话和我们已经记住的生活放在一起理解，再好好回答你。"
         else:
             public_thought = "我先听懂你真正想说的，再把回应说得自然一点。"
-        yield ("data: " + json.dumps({"think_summary": public_thought}, ensure_ascii=False) + "\n\n").encode("utf-8")
+        yield ("data: " + json.dumps({"think_summary": public_thought,
+                                       "user_message_id": user_message_id}, ensure_ascii=False) + "\n\n").encode("utf-8")
         for piece in chat_ai.stream_chat(history, posts, model=model, bedroom=bedroom,
                                          api_base=gateway_base, api_key=gateway_key, sid=sid):
             if isinstance(piece, tuple):
@@ -181,9 +183,10 @@ def api_chat():
                 except Exception as e:
                     logger.warning("柯评论朋友圈失败：%s", e)
             if clean_acc:
-                db.add_message("assistant", clean_acc, session_id=sid, model=model)
+                assistant_message_id = db.add_message("assistant", clean_acc, session_id=sid, model=model)
         yield ("data: " + json.dumps({"done": True, "moment": posted_moment,
-                                       "diary_unlocked": unlocked_diary}, ensure_ascii=False) + "\n\n").encode("utf-8")
+                                       "diary_unlocked": unlocked_diary,
+                                       "assistant_message_id": assistant_message_id}, ensure_ascii=False) + "\n\n").encode("utf-8")
 
     return Response(gen(), content_type=SSE_CONTENT_TYPE, headers=dict(SSE_HEADERS))
 
