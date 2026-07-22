@@ -19,7 +19,7 @@ gunicorn 入口：`gunicorn app:app`（模块级 app 对象，别动）。
 import os
 import logging
 from datetime import timedelta
-from flask import Flask
+from flask import Flask, jsonify
 
 import db
 from constants import MAX_UPLOAD_BYTES
@@ -33,6 +33,13 @@ app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24).hex())
 app.permanent_session_lifetime = timedelta(days=365)
 app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+
+
+@app.errorhandler(413)
+def upload_too_large(_error):
+    return jsonify({"error": "文件超过 30MB，请压缩后再发"}), 413
+
+
 db.init_db()
 
 import routes

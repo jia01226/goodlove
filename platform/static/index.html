@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#FBF8F1" />
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/static/icon.png" />
-<script src="/static/app-core.js?v=20260722i"></script>
-<script src="/static/ui-redesign.js?v=20260722i" defer></script>
+<script src="/static/app-core.js?v=20260722j"></script>
+<script src="/static/ui-redesign.js?v=20260722j" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="AI 助手" />
@@ -254,7 +254,7 @@
     <textarea id="input" rows="1" placeholder="说点什么…"></textarea>
     <button class="send" onclick="send()">➤</button>
   </div>
-  <input id="file" type="file" style="display:none" onchange="onPickFile(this)" />
+  <input id="file" type="file" accept="image/*,.pdf,.txt,.md,.markdown,.docx,.xlsx,.pptx,.csv,.tsv,.json,.jsonl,.log,.html,.htm,.xml,.yaml,.yml,.ini,.cfg,.py,.js,.ts,.css,.sql" style="display:none" onchange="onPickFile(this)" />
 </footer>
 <nav>
   <button data-v="chatView" class="on"><span class="ic">💬</span>聊天</button>
@@ -315,10 +315,10 @@ async function api(path,opt){const r=window.Goodlove?await Goodlove.api(path,opt
 function nowHM(){const d=new Date();return pad2(d.getHours())+":"+pad2(d.getMinutes());}
 function fmtTime(s){if(!s)return"";const m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);if(!m)return"";const d=m[1]+"-"+m[2]+"-"+m[3];return (d===todayStr()?"":m[2]+"/"+m[3]+" ")+m[4]+":"+m[5];}
 function isImg(u){return /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(u||"");}
-function bubble(role,text,time,image,mid){const w=document.createElement("div");w.className="msg "+(role==="user"?"me":"gude");
+function bubble(role,text,time,image,mid,attachmentName){const w=document.createElement("div");w.className="msg "+(role==="user"?"me":"gude");
   const who=role==="user"?"我":AI_NAME;const tag=document.createElement("span");tag.className="tag";tag.textContent=who+(time?" · "+time:"");
   const bb=document.createElement("div");bb.className="bubble";
-  if(image){if(isImg(image)){const im=document.createElement("img");im.onload=scroll;im.src=image;im.style.cssText="max-width:200px;max-height:240px;border-radius:10px;display:block;cursor:pointer";im.onclick=()=>window.open(image);bb.appendChild(im);}else{const a=document.createElement("a");a.href=image;a.target="_blank";a.textContent="📎 "+(image.split("/").pop());a.style.color="var(--gold-deep)";bb.appendChild(a);}}
+  if(image){if(isImg(image)){const im=document.createElement("img");im.onload=scroll;im.src=image;im.alt=attachmentName||"聊天图片";im.style.cssText="max-width:200px;max-height:240px;border-radius:10px;display:block;cursor:pointer";im.onclick=()=>window.open(image);bb.appendChild(im);}else{const a=document.createElement("a");a.href=image;a.target="_blank";a.textContent="📎 "+(attachmentName||image.split("/").pop());a.style.color="var(--gold-deep)";bb.appendChild(a);}}
   const tx=document.createElement("span");if(text){tx.textContent=text;if(image)tx.style.cssText="display:block;margin-top:6px";}bb.appendChild(tx);
   if(role==="user"){w.appendChild(bb);w.appendChild(tag);}else{w.appendChild(tag);w.appendChild(bb);}
   msgs.appendChild(w);scroll();bb._tag=tag;bb._who=who;bb._tx=tx;if(mid)bindLongPress(bb,mid,role);return bb;}
@@ -399,10 +399,26 @@ function toast(t){const d=document.createElement("div");d.textContent=t;
   document.body.appendChild(d);setTimeout(()=>d.remove(),1800);}
 async function delMsg(mid){if(!confirm("删掉这条消息？（走样、说错的话，删了它就不在对话里了）"))return;try{await api("/api/messages/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:mid})});loadMsgs();}catch(e){}}
 let pending=null;
+async function prepareUploadFile(file){
+  if(!file.type.startsWith("image/")||file.type==="image/gif")return file;
+  const needsConversion=/\.(heic|heif|bmp)$/i.test(file.name)||file.size>900*1024;
+  if(!needsConversion)return file;
+  const url=URL.createObjectURL(file);
+  try{
+    const image=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=url;});
+    const maxSide=2048,scale=Math.min(1,maxSide/Math.max(image.naturalWidth,image.naturalHeight));
+    const canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+    const ctx=canvas.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",.84));
+    if(!blob)return file;
+    return new File([blob],file.name.replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg",lastModified:file.lastModified});
+  }catch(_){return file;}finally{URL.revokeObjectURL(url);}
+}
 async function onPickFile(input){const f=input.files&&input.files[0];input.value="";if(!f)return;
   $("#pendingBar").style.display="flex";$("#pendingThumb").style.display="none";$("#pendingName").textContent="上传中… "+f.name;
-  try{const fd=new FormData();fd.append("file",f);const r=await api("/api/upload",{method:"POST",body:fd});const d=await r.json();
-    if(d.error){$("#pendingName").textContent="上传失败，再试一次~";return;}
+  try{const uploadFile=await prepareUploadFile(f);const fd=new FormData();fd.append("file",uploadFile);fd.append("original_name",f.name);const r=await api("/api/upload",{method:"POST",body:fd});
+    const raw=await r.text();let d={};try{d=JSON.parse(raw);}catch(_){d={error:r.status===413?"文件超过 30MB，请压缩后再发":"服务器没有接住这个文件"};}
+    if(!r.ok||d.error){pending=null;$("#pendingName").textContent="上传失败："+(d.error||("HTTP "+r.status));return;}
     pending=d;$("#pendingName").textContent=d.name||"已选好";
     if(d.is_image){$("#pendingThumb").src=d.url;$("#pendingThumb").style.display="block";}
   }catch(e){$("#pendingName").textContent="上传失败："+((e&&e.message)||e);}}
@@ -420,10 +436,10 @@ function setSid(id){currentSid=+id||1;try{localStorage.setItem("sid",currentSid)
 // 分句显示：助手消息按 ||| 拆成几条泡泡（像微信一句句发）；没分隔符就原样一条
 function splitParts(s){return (s||"").split(/\s*\|\|\|\s*/).map(x=>x.trim()).filter(Boolean);}
 function renderMsg(m){const t=fmtTime(m.created_at);
-  if(m.author==="user")return bubble("user",m.content,t,m.image,m.id);
+  if(m.author==="user")return bubble("user",m.content,t,m.image,m.id,m.attachment_name);
   const parts=splitParts(m.content);
-  if(parts.length<=1){const bb=bubble(m.author,parts[0]||m.content,t,m.image,m.id);if(m.thought_note)attachThinkingSummary(bb,m.thought_note);return bb;}
-  parts.forEach((p,i)=>{const bb=bubble("assistant",p,t,i===0?m.image:"",m.id);if(i===0&&m.thought_note)attachThinkingSummary(bb,m.thought_note);});}  // 每条都带时间:标签同宽才对得齐；长按可删
+  if(parts.length<=1){const bb=bubble(m.author,parts[0]||m.content,t,m.image,m.id,m.attachment_name);if(m.thought_note)attachThinkingSummary(bb,m.thought_note);return bb;}
+  parts.forEach((p,i)=>{const bb=bubble("assistant",p,t,i===0?m.image:"",m.id,i===0?m.attachment_name:"");if(i===0&&m.thought_note)attachThinkingSummary(bb,m.thought_note);});}  // 每条都带时间:标签同宽才对得齐；长按可删
 let lastMessageId=0;
 async function loadMsgs(){try{const r=await api("/api/messages?session_id="+currentSid);const arr=await r.json();lastMessageId=Math.max(0,...arr.map(m=>Number(m.id)||0));msgs.innerHTML="";if(!arr.length){msgs.innerHTML='<div class="empty">跟它说说话吧~</div>';}arr.forEach(renderMsg);scrollHard();}catch(e){}}
 function openDrawer(){$("#drawer").style.display="block";loadSessions();}
@@ -455,7 +471,7 @@ function toggleBd(){BD=!BD;localStorage.setItem("bd",BD?"1":"0");updateBd();toas
 let bdTapCount=0,bdTapTimer=0;
 function handleBdTap(){clearTimeout(bdTapTimer);bdTapCount++;bdTapTimer=setTimeout(()=>bdTapCount=0,1100);if(bdTapCount<3)return;bdTapCount=0;toggleBd();}
 updateBd();
-async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";const userBubble=bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];const bd=BD;
+async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";const fileName=pending?pending.name:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";const userBubble=bubble("user",t,nowHM(),img,undefined,fileName);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];const bd=BD;
   // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发；卧室(🔥)一整段沉浸，绝不拆
   function paint(){
     if(bd){b._tx.textContent=acc.replace(/\s*\|\|\|\s*/g,"\n").replace(/\|+\s*$/,"").trim();scroll();return;}
@@ -463,7 +479,7 @@ async function send(){const t=$("#input").value.trim();const img=pending?pending
     while(bubbles.length<parts.length)bubbles.push(bubble("assistant",""));
     parts.forEach((p,i)=>{let s=p;if(i===parts.length-1)s=s.replace(/\|+\s*$/,"");bubbles[i]._tx.textContent=s.trim();});scroll();}
   const diaryRequestId=pendingDiaryRequestId||undefined;
-  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,session_id:currentSid,bedroom:BD,model:selectedModel||undefined,diary_request_id:diaryRequestId})});
+  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,file_name:fileName,session_id:currentSid,bedroom:BD,model:selectedModel||undefined,diary_request_id:diaryRequestId})});
   const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
   while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(e.user_message_id){lastMessageId=Math.max(lastMessageId,Number(e.user_message_id)||0);bindLongPress(userBubble,e.user_message_id,"user");}if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.assistant_message_id){lastMessageId=Math.max(lastMessageId,Number(e.assistant_message_id)||0);bubbles.forEach(bb=>bindLongPress(bb,e.assistant_message_id,"assistant"));}if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
   if(diaryRequestId)pendingDiaryRequestId=0;

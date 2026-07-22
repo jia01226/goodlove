@@ -5,7 +5,8 @@ import logging
 from flask import Blueprint, jsonify, request, send_from_directory
 
 import db
-from constants import STATIC_DIR, UPLOAD_DIR, IMG_EXT, UPLOAD_EXT_MAXLEN
+from constants import (STATIC_DIR, UPLOAD_DIR, IMG_EXT, TEXT_EXT, DOC_EXT,
+                       UPLOAD_EXT, UPLOAD_EXT_MAXLEN)
 from utils import guard, jget
 
 logger = logging.getLogger(__name__)
@@ -19,9 +20,20 @@ def api_upload():
     if not f or not f.filename:
         return jsonify({"error": "no file"}), 400
     ext = os.path.splitext(f.filename)[1].lower()[:UPLOAD_EXT_MAXLEN]
+    if ext not in UPLOAD_EXT:
+        return jsonify({"error": "暂不支持这种文件格式"}), 415
+    original_name = os.path.basename(
+        (request.form.get("original_name") or f.filename).replace("\\", "/")
+    )[:255]
     name = uuid.uuid4().hex + ext
     f.save(os.path.join(UPLOAD_DIR, name))
-    return jsonify({"url": "/uploads/" + name, "is_image": ext in IMG_EXT, "name": f.filename})
+    return jsonify({
+        "url": "/uploads/" + name,
+        "is_image": ext in IMG_EXT,
+        "can_read": ext in (TEXT_EXT | DOC_EXT),
+        "kind": "image" if ext in IMG_EXT else "document",
+        "name": original_name,
+    })
 
 
 @bp.get("/uploads/<path:p>")

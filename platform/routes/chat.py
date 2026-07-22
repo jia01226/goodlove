@@ -1,6 +1,7 @@
 """聊天：SSE 对话、历史消息、会话抽屉、模型选择器，以及 /chat 页面。"""
 import json
 import re
+import os
 import logging
 from flask import Blueprint, Response, jsonify, request, send_from_directory
 
@@ -10,7 +11,7 @@ import moments_ai
 import relationship_state
 from constants import (STATIC_DIR, MAIN_SESSION, SESSION_NAME_MAXLEN,
                        DEFAULT_SESSION_NAME, USAGE_TAG, THINK_TAG,
-                       SSE_CONTENT_TYPE, SSE_HEADERS)
+                       SSE_CONTENT_TYPE, SSE_HEADERS, IMG_EXT)
 from utils import guard, jbody, jget
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ def api_chat():
     data = jbody()
     text = (data.get("text") or "").strip()
     image = (data.get("image") or "").strip()
+    attachment_name = (data.get("file_name") or "").strip()[:255]
     if not text and not image:
         return jsonify({"error": "empty"}), 400
     sid = _chat_sid(data.get("session_id"))
@@ -91,8 +93,11 @@ def api_chat():
     if bedroom:
         logger.info("[bedroom] 前端的卧室开关已送达后端")
     model, gateway_base, gateway_key = chat_ai.resolve_gateway(data.get("model"))
-    user_message_id = db.add_message("user", text, session_id=sid, image=image,
-                                     msg_type=("image" if image else "text"), model=model)
+    attachment_ext = os.path.splitext(attachment_name or image.split("?")[0])[1].lower()
+    message_type = "image" if image and attachment_ext in IMG_EXT else ("file" if image else "text")
+    user_message_id = db.add_message(
+        "user", text, session_id=sid, image=image, msg_type=message_type,
+        model=model, attachment_name=attachment_name)
     try:
         relationship_state.observe("user", text=text, bedroom=bedroom)
     except Exception as exc:

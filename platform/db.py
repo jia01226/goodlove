@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     is_push INTEGER DEFAULT 0,     -- 影子推送=1；仍是正式聊天消息，只用于每日上限统计
     model TEXT DEFAULT '',         -- 生成这条消息时实际选择的模型（只做归因，不参与人格判断）
     thought_note TEXT DEFAULT '',  -- 柯主动给佳佳看的短念头；不是供应商隐藏推理
+    attachment_name TEXT DEFAULT '', -- 用户原始文件名；存储文件名是随机 UUID
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
@@ -339,6 +340,8 @@ def init_db():
         conn.execute("ALTER TABLE chat_messages ADD COLUMN model TEXT DEFAULT ''")
     if "thought_note" not in mcols:
         conn.execute("ALTER TABLE chat_messages ADD COLUMN thought_note TEXT DEFAULT ''")
+    if "attachment_name" not in mcols:
+        conn.execute("ALTER TABLE chat_messages ADD COLUMN attachment_name TEXT DEFAULT ''")
     # 旧库平滑升级：会话表补 summarized_until（会话总结用：已折叠到摘要的最大消息 id）
     scols = [r["name"] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()]
     if "summarized_until" not in scols:
@@ -398,13 +401,14 @@ def init_db():
 
 # ---- 便捷读写 ----
 def add_message(author, content, session_id=1, msg_type="text", image="", is_push=False,
-                model="", thought_note=""):
+                model="", thought_note="", attachment_name=""):
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO chat_messages "
-        "(session_id,author,content,msg_type,image,is_push,model,thought_note) VALUES (?,?,?,?,?,?,?,?)",
+        "(session_id,author,content,msg_type,image,is_push,model,thought_note,attachment_name) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
         (session_id, author, content, msg_type, image, 1 if is_push else 0,
-         model or "", thought_note or ""))
+         model or "", thought_note or "", attachment_name or ""))
     conn.execute("UPDATE chat_sessions SET updated_at=datetime('now','+8 hours') WHERE id=?", (session_id,))
     conn.commit(); mid = cur.lastrowid; conn.close()
     return mid
@@ -412,7 +416,7 @@ def add_message(author, content, session_id=1, msg_type="text", image="", is_pus
 def recent_messages(session_id=1, limit=40):
     conn = get_db()
     rows = conn.execute(
-        "SELECT id,author,content,created_at,image,model,thought_note "
+        "SELECT id,author,content,created_at,image,model,thought_note,attachment_name "
         "FROM chat_messages WHERE session_id=? ORDER BY id DESC LIMIT ?",
         (session_id, limit)).fetchall()
     conn.close()

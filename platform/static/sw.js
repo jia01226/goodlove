@@ -2,7 +2,7 @@
 self.addEventListener("install", e => self.skipWaiting());
 self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
 
-const UI_SCRIPT = '<script src="/static/ui-redesign.js?v=20260722i" defer></script>';
+const UI_SCRIPT = '<script src="/static/ui-redesign.js?v=20260722j" defer></script>';
 
 self.addEventListener("fetch", event => {
   const req = event.request;

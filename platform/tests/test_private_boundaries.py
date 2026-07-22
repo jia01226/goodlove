@@ -9,6 +9,7 @@ import sys
 import tempfile
 import types
 import unittest
+import zipfile
 from pathlib import Path
 
 
@@ -110,6 +111,117 @@ class PrivateBoundaryTests(unittest.TestCase):
         self.assertEqual(item["content"], "这是聊天正文")
         self.assertEqual(item["thought_note"], "爸爸把这个记上了")
         self.assertNotIn("记上了", item["content"])
+
+    def test_attachment_keeps_original_name_separate_from_stored_url(self):
+        message_id = self.db.add_message(
+            "user", "请看看这个文件", session_id=1,
+            image="/uploads/random-id.txt", msg_type="file",
+            attachment_name="佳佳的交接.txt")
+        item = next(m for m in self.db.recent_messages(1) if m["id"] == message_id)
+        self.assertEqual(item["image"], "/uploads/random-id.txt")
+        self.assertEqual(item["attachment_name"], "佳佳的交接.txt")
+
+
+class AttachmentAndPrivateRegressionTests(unittest.TestCase):
+    """附件与关联回归只用临时目录；模型调用被替换为捕获函数。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="goodlove-attachment-test-")
+        os.environ["DB_PATH"] = str(Path(self.tmp.name) / "scratch.db")
+        import db
+        self.db = importlib.reload(db)
+        self.db.init_db()
+        import attachment_reader
+        self.reader = importlib.reload(attachment_reader)
+        self.old_upload_dir = self.reader.UPLOAD_DIR
+        self.reader.UPLOAD_DIR = self.tmp.name
+
+    def tearDown(self):
+        self.reader.UPLOAD_DIR = self.old_upload_dir
+        self.tmp.cleanup()
+        os.environ.pop("DB_PATH", None)
+
+    def test_text_and_docx_are_readable(self):
+        text_path = Path(self.tmp.name) / "sample.txt"
+        text_path.write_text("只用于测试：柯应该能读到这一句。", encoding="utf-8")
+        text_result = self.reader.extract_text("/uploads/sample.txt", "交接.txt")
+        self.assertTrue(text_result["ok"])
+        self.assertIn("柯应该能读到", text_result["text"])
+        self.assertEqual(text_result["name"], "交接.txt")
+
+        docx_path = Path(self.tmp.name) / "sample.docx"
+        document_xml = (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            '<w:body><w:p><w:r><w:t>临时 Word 内容</w:t></w:r></w:p></w:body></w:document>'
+        )
+        with zipfile.ZipFile(docx_path, "w") as archive:
+            archive.writestr("word/document.xml", document_xml)
+        docx_result = self.reader.extract_text("/uploads/sample.docx", "说明.docx")
+        self.assertTrue(docx_result["ok"])
+        self.assertIn("临时 Word 内容", docx_result["text"])
+
+    def test_file_content_and_image_bytes_reach_model_payload_without_network(self):
+        previous_requests = sys.modules.get("requests")
+        previous_db = sys.modules.get("db")
+        if previous_requests is None:
+            sys.modules["requests"] = types.SimpleNamespace()
+        sys.modules["db"] = types.SimpleNamespace(get_session=lambda _sid: None)
+        try:
+            import chat_ai
+            chat_ai = importlib.reload(chat_ai)
+            chat_ai.UPLOAD_DIR = self.tmp.name
+            chat_ai.attachment_reader.UPLOAD_DIR = self.tmp.name
+            text_path = Path(self.tmp.name) / "payload.txt"
+            text_path.write_text("模型必须收到的临时附件正文", encoding="utf-8")
+            png_path = Path(self.tmp.name) / "pixel.png"
+            png_path.write_bytes(
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+                b"\x08\x02\x00\x00\x00\x90wS\xde")
+
+            captured = []
+            original_prompt = chat_ai.build_system_prompt
+            original_version = chat_ai.persona_version
+            original_stamp = chat_ai._now_stamp
+            original_completion = chat_ai.stream_completion
+            chat_ai.build_system_prompt = lambda *_args, **_kwargs: "测试系统提示"
+            chat_ai.persona_version = lambda: "test"
+            chat_ai._now_stamp = lambda: ""
+
+            def fake_completion(messages, **_kwargs):
+                captured.append(messages)
+                yield "测试回复"
+
+            chat_ai.stream_completion = fake_completion
+            try:
+                list(chat_ai.stream_chat([
+                    {"author": "user", "content": "读一下", "image": "/uploads/payload.txt",
+                     "attachment_name": "给柯的说明.txt"},
+                ], [], model="fake", sid=1))
+                list(chat_ai.stream_chat([
+                    {"author": "user", "content": "看图", "image": "/uploads/pixel.png",
+                     "attachment_name": "小图.png"},
+                ], [], model="fake", sid=1))
+            finally:
+                chat_ai.build_system_prompt = original_prompt
+                chat_ai.persona_version = original_version
+                chat_ai._now_stamp = original_stamp
+                chat_ai.stream_completion = original_completion
+        finally:
+            if previous_requests is None:
+                sys.modules.pop("requests", None)
+            else:
+                sys.modules["requests"] = previous_requests
+            if previous_db is None:
+                sys.modules.pop("db", None)
+            else:
+                sys.modules["db"] = previous_db
+
+        self.assertIn("模型必须收到的临时附件正文", captured[0][-1]["content"])
+        image_content = captured[1][-1]["content"]
+        self.assertIsInstance(image_content, list)
+        self.assertEqual(image_content[-1]["type"], "image_url")
+        self.assertTrue(image_content[-1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
     def test_proactive_message_uses_active_session_without_real_model_call(self):
         previous_requests = sys.modules.get("requests")

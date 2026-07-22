@@ -14,8 +14,16 @@ PASSCODE = os.environ.get("ACCESS_PASSCODE", "").strip()
 
 # ---- 上传 ----
 IMG_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".bmp"}
+TEXT_EXT = {
+    ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".jsonl", ".log",
+    ".html", ".htm", ".xml", ".yaml", ".yml", ".ini", ".cfg", ".py",
+    ".js", ".ts", ".css", ".sql",
+}
+DOC_EXT = {".pdf", ".docx", ".xlsx", ".pptx"}
+UPLOAD_EXT = IMG_EXT | TEXT_EXT | DOC_EXT
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024   # 单次上传上限 30MB
 UPLOAD_EXT_MAXLEN = 10                # 上传文件扩展名最长保留 10 字符
+MODEL_FILE_TEXT_MAX = 18000           # 单个文件最多送给模型的可读字符，避免撑爆上下文
 
 # ---- 聊天流（chat_ai.stream_chat / group_chat.stream_reply 的带外信号）----
 USAGE_TAG = "__usage__"

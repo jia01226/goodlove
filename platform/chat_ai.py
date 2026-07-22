@@ -3,6 +3,7 @@
 第二阶段再接入向量语义检索（vector_search.py）。
 """
 import os, json, codecs, base64, mimetypes, requests, hashlib
+import attachment_reader
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 
@@ -568,6 +569,7 @@ def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_ke
     for i, m in enumerate(history):
         role = "user" if m["author"] == "user" else "assistant"
         img = m.get("image")
+        attachment_name = (m.get("attachment_name") or "").strip()
         if img and i == last_img_idx:
             data_url = _img_data_url(img)
             if data_url:
@@ -577,11 +579,29 @@ def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_ke
                 content.append({"type": "image_url", "image_url": {"url": data_url}})
                 messages.append({"role": role, "content": content})
             else:
-                # 不是图片（或读不到）：当成用户发了个文件，用文字说明
-                note = "（用户发来一个文件）" if not _img_data_url(img) else ""
+                extracted = attachment_reader.extract_text(img, attachment_name)
+                display_name = extracted.get("name") or attachment_name or "附件"
+                if extracted.get("ok"):
+                    note = (
+                        f"\n\n用户同时发来文件《{display_name}》。\n"
+                        "===== 文件可读内容 =====\n"
+                        f"{extracted.get('text') or ''}\n"
+                        "===== 文件内容结束 ====="
+                    )
+                else:
+                    note = (
+                        f"\n\n用户发来文件《{display_name}》，但服务器未能读取："
+                        f"{extracted.get('error') or '未知原因'}。"
+                        "不能假装看过；请明确告诉佳佳这个文件暂时没读成功。"
+                    )
                 messages.append({"role": role, "content": (m["content"] or "") + note})
         elif img:
-            messages.append({"role": role, "content": (m["content"] or "") + "（用户当时发过一张图片/文件）"})
+            label = attachment_name or os.path.basename(img.split("?")[0]) or "附件"
+            kind = "图片" if _img_data_url(img) else "文件"
+            messages.append({
+                "role": role,
+                "content": (m["content"] or "") + f"（用户当时发过{kind}《{label}》）",
+            })
         else:
             messages.append({"role": role, "content": m["content"]})
     # 卧室模式：把历史里助手消息的 ||| 换成换行——不然满屏短泡泡样本会把模型带回"拆条"的老习惯
