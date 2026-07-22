@@ -248,7 +248,8 @@
       const gpt = id.replace(/^gpt[-_]?/, "").replace(/[-_]/g, " ").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
       short = `GPT ${gpt}`.trim();
     }
-    return `${short || "默认模型"}${isDefault ? " · 默认" : ""}`;
+    const intimateRecommended = id === "claude-opus-4-6" ? " · 亲密推荐" : "";
+    return `${short || "默认模型"}${intimateRecommended}${isDefault ? " · 默认" : ""}`;
   }
 
   function buildMemoryCenter(view) {

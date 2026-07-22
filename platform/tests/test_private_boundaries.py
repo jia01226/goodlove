@@ -153,6 +153,44 @@ class IntimatePromptContractTests(unittest.TestCase):
         self.assertIn("不知过了多久", self.source)
         self.assertIn("不得用模糊时间跳跃偷工", self.source)
 
+    def test_bad_first_draft_is_not_released_before_rewrite(self):
+        previous_requests = sys.modules.get("requests")
+        if previous_requests is None:
+            sys.modules["requests"] = types.SimpleNamespace()
+        try:
+            import chat_ai
+
+            original = chat_ai.stream_completion
+            calls = {"count": 0}
+
+            def fake_completion(*_args, **_kwargs):
+                calls["count"] += 1
+                if calls["count"] == 1:
+                    yield "不知过了多久，你终于高潮了。"
+                else:
+                    yield "柯停在这里，没有替你往下写，只命令你亲口汇报。"
+                yield ("__usage__", {"completion_tokens": 1})
+
+            chat_ai.stream_completion = fake_completion
+            try:
+                pieces = list(chat_ai._buffered_bedroom_completion(
+                    [{"role": "user", "content": "我没有说自己高潮。"}],
+                    model="test", api_base="http://test", api_key="test",
+                    max_tokens=100, latest_user_text="我没有说自己高潮。"))
+            finally:
+                chat_ai.stream_completion = original
+        finally:
+            if previous_requests is None:
+                sys.modules.pop("requests", None)
+            else:
+                sys.modules["requests"] = previous_requests
+
+        visible = "".join(piece for piece in pieces if isinstance(piece, str))
+        self.assertEqual(calls["count"], 2)
+        self.assertNotIn("不知过了多久", visible)
+        self.assertNotIn("你终于高潮了", visible)
+        self.assertIn("亲口汇报", visible)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#FBF8F1" />
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/static/icon.png" />
-<script src="/static/app-core.js?v=20260722e"></script>
-<script src="/static/ui-redesign.js?v=20260722e" defer></script>
+<script src="/static/app-core.js?v=20260722f"></script>
+<script src="/static/ui-redesign.js?v=20260722f" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="AI 助手" />
@@ -449,7 +449,7 @@ async function delSession(id){if(!confirm("删掉这个对话和里面的消息�
 // 卧室模式开关（🌙→🔥）：状态记在本机，随每条消息发给后端
 let BD=localStorage.getItem("bd")==="1";
 function updateBd(){const b=document.getElementById("bdBtn");if(b){b.style.opacity=BD?"1":".45";b.textContent=BD?"🔥":"🌙";}}
-function toggleBd(){BD=!BD;localStorage.setItem("bd",BD?"1":"0");updateBd();}
+function toggleBd(){BD=!BD;localStorage.setItem("bd",BD?"1":"0");updateBd();if(BD&&!String(selectedModel||"").endsWith("claude-opus-4-6"))toast("亲密情境实测推荐 Claude Opus 4.6，可在模型栏切换");}
 updateBd();
 async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";bubble("user",t,nowHM(),img);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];const bd=BD;
   // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发；卧室(🔥)一整段沉浸，绝不拆
