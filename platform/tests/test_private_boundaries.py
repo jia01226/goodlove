@@ -615,6 +615,7 @@ class IntimatePromptContractTests(unittest.TestCase):
         self.assertIn("同一目的下连续的几步动作、话语、位置变化和力度递进", self.source)
         self.assertIn("不把每一步变成客服式许可确认", self.source)
         self.assertIn("未知反应不等于柯必须早停", self.source)
+        self.assertIn("不因未知反应偷懒早停", self.source)
 
     def test_lazy_time_skips_are_forbidden(self):
         self.assertIn("不知过了多久", self.source)
