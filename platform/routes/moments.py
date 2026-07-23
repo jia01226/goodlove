@@ -25,6 +25,14 @@ def api_moments():
     return response
 
 
+@bp.get("/api/moments/status")
+@guard
+def api_moments_status():
+    response = jsonify(db.moments_activity_status())
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @bp.post("/api/moments")
 @guard
 def api_add_moment():

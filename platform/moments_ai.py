@@ -32,8 +32,8 @@ def china_now():
 
 
 def next_due(kind="moment"):
-    """动态 8~20 分钟，评论 3~8 分钟；随机才像真的“路过”。"""
-    lo, hi = (3, 8) if kind == "comment" else (8, 20)
+    """动态 3~8 分钟，评论 1~4 分钟；有一点生活节奏，但不让佳佳等到交互断掉。"""
+    lo, hi = (1, 4) if kind == "comment" else (3, 8)
     return (china_now() + datetime.timedelta(minutes=random.randint(lo, hi))).strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -206,6 +206,8 @@ def _generate_initial(moment):
         "只输出一个 JSON，不要代码块、不要解释："
         '{"like": true, "comment": "一句自然、具体的评论，可留空", "image_description": ""}'
         "\n评论最多两句，不要客服腔，不要总结她，不要提到系统或任务。"
+        "像熟人路过时顺手留下的一句，不做阅读理解，不说“谢谢分享”“看到你这样”“这让我感受到”；"
+        "能抓住一个具体细节就抓具体细节，没有真话可说可以只点赞、把 comment 留空。"
         "没有相关动态时绝不翻旧账；即使提供了相关动态，也只在自然需要时轻轻联想一次，不复述旧内容。\n"
         "</system_trigger>"
     )
@@ -237,6 +239,7 @@ def _generate_comment_reply(moment, target_comment):
         "最近评论链：\n" + ("\n".join(chain) or "（还没有其他评论）") + "\n"
         f"这次要接的是佳佳这句：{target_comment.get('content') or ''}\n"
         "按柯的语气回复1~2句，具体、亲密、生活化，不要客服腔，不要复述任务，不要 Markdown；只输出回复本身。\n"
+        "像同一个熟人在评论区自然接话，不说“谢谢你的评论”“我理解你的感受”“很高兴你分享”。\n"
         "</system_trigger>"
     )
     history = _base_history() + [{"author": "user", "content": directive}]

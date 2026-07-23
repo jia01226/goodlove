@@ -1172,6 +1172,29 @@ def list_moments(limit=50):
         out.append(item)
     return out
 
+
+def moments_activity_status():
+    """朋友圈轻量状态：只给首页判断有没有新动静，不返回任何动态或评论正文。"""
+    conn = get_db()
+    latest = conn.execute(
+        "SELECT MAX(at) AS latest FROM ("
+        "SELECT created_at AS at FROM moments WHERE author='ke' "
+        "UNION ALL SELECT created_at AS at FROM moment_comments WHERE author='ke' "
+        "UNION ALL SELECT updated_at AS at FROM moments WHERE COALESCE(ai_liked,0)=1"
+        ")"
+    ).fetchone()
+    waiting = bool(conn.execute(
+        "SELECT 1 FROM moments WHERE reply_status IN ('pending','processing') LIMIT 1"
+    ).fetchone() or conn.execute(
+        "SELECT 1 FROM moment_comments WHERE reply_status IN ('pending','processing') LIMIT 1"
+    ).fetchone())
+    conn.close()
+    return {
+        "last_ke_activity_at": (latest["latest"] if latest else "") or "",
+        "waiting": waiting,
+    }
+
+
 def get_moment(mid):
     conn = get_db()
     row = conn.execute("SELECT * FROM moments WHERE id=?", (mid,)).fetchone()
@@ -1637,6 +1660,39 @@ def public_drawer_view(limit=20):
         "SELECT 1 FROM diaries WHERE locked=1 AND COALESCE(revealed,0)=0 LIMIT 1").fetchone())
     conn.close()
     return {"sealed": sealed, "outside": [dict(r) for r in rows]}
+
+
+def drawer_catalog_status():
+    """只返回各类空间有没有东西，不返回数量、标题、日期或正文。"""
+    conn = get_db()
+
+    def exists(sql, params=()):
+        return bool(conn.execute(f"SELECT EXISTS({sql})", params).fetchone()[0])
+
+    try:
+        return {
+            "private_thoughts": exists(
+                "SELECT 1 FROM ke_drawer_items LIMIT 1"),
+            "diaries": exists(
+                "SELECT 1 FROM diaries "
+                "WHERE COALESCE(kind,'diary')='diary' AND COALESCE(author,'柯')='柯' LIMIT 1"),
+            "dreams": exists(
+                "SELECT 1 FROM diaries "
+                "WHERE COALESCE(kind,'diary')='dream' AND COALESCE(author,'柯')='柯' LIMIT 1"),
+            "public_notes": exists(
+                "SELECT 1 FROM chat_messages "
+                "WHERE author='assistant' AND TRIM(COALESCE(thought_note,''))<>'' LIMIT 1"),
+            "moments": exists(
+                "SELECT 1 FROM moments m WHERE m.author='ke' OR COALESCE(m.ai_liked,0)=1 "
+                "OR EXISTS(SELECT 1 FROM moment_comments c "
+                "WHERE c.moment_id=m.id AND c.author='ke') LIMIT 1"),
+            "proactive": exists(
+                "SELECT 1 FROM chat_messages "
+                "WHERE author='assistant' AND COALESCE(is_push,0)=1 LIMIT 1"),
+        }
+    finally:
+        conn.close()
+
 
 def messages_on_date(date, session_id=1):
     """某天(中国时间 YYYY-MM-DD)的全部消息，给写日记回顾用。"""

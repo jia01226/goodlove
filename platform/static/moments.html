@@ -140,6 +140,7 @@ function momentHtml(moment,index){const mine=moment.author==="user",comments=Arr
 function render(){const feed=$("#feed");feed.innerHTML=rows.length?rows.map(momentHtml).join(""):'<div class="empty">这里还很安静。<br>先留下一件今天的小事吧。</div>';}
 
 async function loadMoments(force=false){try{const data=core?await core.getJson("/api/moments",{ttl:10000,force}):await(await api("/api/moments")).json();rows=Array.isArray(data)?data:[];render();}catch(error){showToast("这次没翻开，再试一下");}}
+async function markMomentsSeen(){try{const status=await(await api("/api/moments/status")).json();const latest=String(status.last_ke_activity_at||"");if(latest)localStorage.setItem("moments_seen_at",latest);}catch(_){}}
 function findMoment(id){return rows.find(item=>Number(item.id)===Number(id));}
 function findComment(moment,id){return (moment.comments||[]).find(item=>Number(item.id)===Number(id));}
 
@@ -165,9 +166,9 @@ async function publish(){const button=$(".send"),content=$("#content").value.tri
   const image=pending?pending.url:"";if(!content&&!image){$("#content").focus();return;}button.disabled=true;try{await mutate("/api/moments",{content,image,visibility:"private"});$("#content").value="";grow($("#content"));clearPending();showToast("留在这里了，柯晚一点会路过");await loadMoments(true);setTimeout(()=>loadMoments(true),5000);}catch(error){showToast("这次没有发布好");}finally{button.disabled=false;}}
 
 $("#content").addEventListener("keydown",event=>{if(event.key==="Enter"&&(event.metaKey||event.ctrlKey)){event.preventDefault();publish();}});
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadMoments(true);});
-setInterval(()=>{if(!document.hidden)loadMoments(true);},60000);
-loadMoments(true);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadMoments(true).then(markMomentsSeen);});
+setInterval(()=>{if(!document.hidden)loadMoments(true).then(markMomentsSeen);},15000);
+loadMoments(true).then(markMomentsSeen);
 </script>
 </body>
 </html>

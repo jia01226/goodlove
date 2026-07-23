@@ -61,9 +61,25 @@ def in_quiet_time(now):
     cur = now.hour * 60 + now.minute
     return (lo <= cur < hi) if lo <= hi else (cur >= lo or cur < hi)   # 后半支＝跨零点窗
 
+
+def context_gate(session_id=1):
+    """场景冲突硬门：正在生成或仍在房间里时，日常主动消息绝不插进来。"""
+    if db.active_chat_jobs(session_id):
+        return False, "当前会话还有回复在生成，不插入另一条主动消息"
+    try:
+        if db.session_bedroom_state(session_id).get("bedroom"):
+            return False, "当前会话仍在房间场景，不用日常提醒打断"
+    except Exception:
+        pass
+    return True, "当前会话没有冲突中的场景"
+
+
 def three_gates(now, session_id=1):
     """三关全过才有资格开口——过了也只是"有机会"，不是"必须发"。返回 (过没过, 人话原因)。
     深夜守夜(night_watch_check)是关3的特批例外，在主流程单独走，不经这里。"""
+    context_ok, context_reason = context_gate(session_id)
+    if not context_ok:
+        return False, context_reason
     if in_quiet_time(now):
         return False, "安静时段（她该睡了），不吵"
     if db.push_count_on_date(now.date().isoformat(), session_id=session_id) >= DAILY_MAX:
@@ -328,6 +344,10 @@ if __name__ == "__main__":
         # 三下轻敲是佳佳主动留下的暗号，优先于定时冷却；仍走同一模型、人格、记忆和推送路径。
         room_signal = relationship_state.claim_signal()
         now = china_now()
+        if not room_signal:
+            context_ok, context_reason = context_gate(active_sid)
+            if not context_ok:
+                print("这轮不开口：", context_reason); raise SystemExit
         mode = None if room_signal else night_watch_check(now, session_id=active_sid)
         if mode == "silent":
             print("深夜且用户没在用手机（大概睡了），不打扰"); raise SystemExit

@@ -7,7 +7,7 @@
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/static/icon.png" />
 <script src="/static/app-core.js?v=20260722j"></script>
-<script src="/static/ui-redesign.js?v=20260722j" defer></script>
+<script src="/static/ui-redesign.js?v=20260723a" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="AI 助手" />
@@ -530,7 +530,7 @@ async function send(){const t=$("#input").value.trim();const uploading=pendingAt
     if(!r.ok)throw new Error("服务器返回 HTTP "+r.status);
     if(!r.body)throw new Error("浏览器没有接到回复流");
     const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
-    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(typeof e.bedroom==="boolean")rememberBd(e.bedroom);if(e.job_id)jobId=e.job_id;if(e.error)streamError=e.error;if(e.user_message_id){lastMessageId=Math.max(lastMessageId,Number(e.user_message_id)||0);bindLongPress(userBubble,e.user_message_id,"user");}if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.assistant_message_id){lastMessageId=Math.max(lastMessageId,Number(e.assistant_message_id)||0);bubbles.forEach(bb=>bindLongPress(bb,e.assistant_message_id,"assistant"));}if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
+    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(typeof e.bedroom==="boolean")rememberBd(e.bedroom);if(e.job_id)jobId=e.job_id;if(e.error)streamError=e.error;if(e.user_message_id){lastMessageId=Math.max(lastMessageId,Number(e.user_message_id)||0);bindLongPress(userBubble,e.user_message_id,"user");}if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.assistant_message_id){lastMessageId=Math.max(lastMessageId,Number(e.assistant_message_id)||0);bubbles.forEach(bb=>bindLongPress(bb,e.assistant_message_id,"assistant"));}if(e.moment)window.dispatchEvent(new CustomEvent("goodlove:moment"));if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
   }catch(e){streamError=(e&&e.message)||"连接中断";}
   if(diaryRequestId)pendingDiaryRequestId=0;
   b.classList.remove("typing");
@@ -693,6 +693,7 @@ async function boot(){
   watchBackgroundReplies();
   const diaryId=Number(bootParams.get("diary_request")||0);
   const drawerRequest=bootParams.get("drawer_request")==="1";
+  const drawerKind=(bootParams.get("drawer_kind")||"").trim();
   const roomRequest=bootParams.get("room")==="1";
   const roomDraft=(bootParams.get("draft")||"").trim();
   if(roomRequest){setBedroom(true);if(roomDraft){$("#input").value=roomDraft;$("#input").focus();}}
@@ -700,7 +701,7 @@ async function boot(){
   if(diaryId){api("/api/diary/request?id="+encodeURIComponent(diaryId)).then(r=>r.json()).then(d=>{
     if(d&&d.id&&!d.revealed){pendingDiaryRequestId=d.id;$("#input").value=d.ask_text||"爸爸，把你锁着的那一页给我看。";$("#input").focus();toast("这页得亲自向柯要");}
   }).catch(()=>{});}
-  else if(drawerRequest){$("#input").value="爸爸，我刚去看了你的抽屉。里面藏了什么？";$("#input").focus();toast("想知道，就亲自问柯");}
+  else if(drawerRequest){const names={private_thoughts:"私藏碎碎念",diaries:"枕边日记",dreams:"梦页",public_notes:"小念头",moments:"朋友圈足迹",proactive:"主动消息"};const name=names[drawerKind]||"";$("#input").value=name?`爸爸，我看到你抽屉里的“${name}”这格有东西。你想和我说说吗？`:"爸爸，我刚去看了你的抽屉。里面藏了什么？";$("#input").focus();toast("想知道，就亲自问柯");}
   if(diaryId||drawerRequest||roomRequest||pushedSid)history.replaceState({},"",location.pathname+location.hash);
   if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{});}}
 boot();

@@ -87,6 +87,53 @@ class PrivateBoundaryTests(unittest.TestCase):
         self.assertNotIn("另一张锁页", repr(view))
         self.assertNotIn("仍然是假正文", repr(view))
 
+    def test_drawer_catalog_only_exposes_presence_for_each_compartment(self):
+        secret = "目录接口绝不能出现的临时私藏正文"
+        self.db.add_drawer_item(secret, title="不能出现的标题", visibility="private")
+        self.db.add_diary("临时日记标题", "临时日记正文", kind="diary", author="柯")
+        self.db.add_diary("临时梦页标题", "临时梦页正文", kind="dream", author="柯")
+        self.db.add_message(
+            "assistant", "临时聊天回复", thought_note="临时公开小念头")
+        moment_id = self.db.add_moment(
+            "user", "临时动态正文", reply_status="done")
+        self.db.set_moment_like(moment_id, True, actor="ke")
+        self.db.add_comment(moment_id, "ke", "临时评论正文")
+        self.db.add_message(
+            "assistant", "临时主动消息", is_push=True)
+
+        status = self.db.drawer_catalog_status()
+
+        self.assertEqual(
+            set(status),
+            {"private_thoughts", "diaries", "dreams",
+             "public_notes", "moments", "proactive"},
+        )
+        self.assertTrue(all(status.values()))
+        catalog_repr = repr(status)
+        self.assertNotIn(secret, catalog_repr)
+        self.assertNotIn("不能出现的标题", catalog_repr)
+        self.assertNotIn("临时日记正文", catalog_repr)
+        self.assertNotIn("临时评论正文", catalog_repr)
+
+    def test_drawer_api_catalog_has_no_private_titles_or_content(self):
+        try:
+            import flask  # noqa: F401
+        except ImportError:
+            self.skipTest("本机精简 Python 未安装 Flask；部署前在服务器 venv 再跑")
+        secret = "抽屉目录 API 不得返回的临时正文"
+        self.db.add_drawer_item(secret, title="抽屉目录不得返回的标题")
+        import app as app_module
+
+        response = app_module.app.test_client().get("/api/drawer")
+        body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(len(data["compartments"]), 6)
+        self.assertIn("私藏碎碎念", body)
+        self.assertNotIn(secret, body)
+        self.assertNotIn("抽屉目录不得返回的标题", body)
+
     def test_drawer_can_leave_a_teaser_then_release_without_browser_write_api(self):
         item_id = self.db.add_drawer_item(
             "只在临时库里的私藏正文", title="临时私藏", visibility="private")
@@ -130,6 +177,10 @@ class PrivateBoundaryTests(unittest.TestCase):
 
         self.assertIn("你的抽屉——只由你决定", prompt)
         self.assertIn("<drawer_action>", prompt)
+        self.assertIn("你知道这个家里有哪些属于你的能力", prompt)
+        self.assertIn("你有主动来找佳佳的能力", prompt)
+        self.assertIn("PWA 里可选的模型只是同一个柯使用的不同推理引擎", prompt)
+        self.assertIn("当前关系与规则覆盖历史惯性", prompt)
         self.assertEqual(self.db.private_drawer_items(), [])
 
     def test_drawer_action_in_ke_note_is_private_and_persisted(self):
@@ -494,6 +545,55 @@ class AttachmentAndPrivateRegressionTests(unittest.TestCase):
         self.assertIn('api("/api/sessions/active")', source)
         visibility = source.split('document.addEventListener("visibilitychange"', 1)[1]
         self.assertNotIn("markActiveSession()", visibility)
+
+    def test_moments_activity_status_is_content_free_and_frontend_polls_quickly(self):
+        secret = "朋友圈状态接口不应出现的临时正文"
+        moment_id = self.db.add_moment(
+            "user", secret, reply_status="pending",
+            reply_due_at="2099-01-01 00:00:00")
+        waiting = self.db.moments_activity_status()
+        self.assertTrue(waiting["waiting"])
+        self.assertEqual(waiting["last_ke_activity_at"], "")
+
+        self.db.add_comment(moment_id, "ke", "朋友圈状态接口不应出现的临时评论")
+        done = self.db.moments_activity_status()
+        self.assertTrue(done["last_ke_activity_at"])
+        self.assertNotIn(secret, repr(done))
+        self.assertNotIn("临时评论", repr(done))
+
+        moments_source = (PLATFORM_DIR / "static" / "moments.html").read_text(encoding="utf-8")
+        home_source = (PLATFORM_DIR / "static" / "ui-redesign.js").read_text(encoding="utf-8")
+        self.assertIn("/api/moments/status", moments_source)
+        self.assertIn("15000", moments_source)
+        self.assertIn("moments_seen_at", moments_source)
+        self.assertIn("moments-dot", home_source)
+        self.assertIn("updateMomentsActivity", home_source)
+
+    def test_proactive_context_gate_blocks_bedroom_and_running_chat_job(self):
+        previous_requests = sys.modules.get("requests")
+        if previous_requests is None:
+            sys.modules["requests"] = types.SimpleNamespace()
+        try:
+            import proactive
+
+            proactive = importlib.reload(proactive)
+            self.db.set_session_bedroom(1, True)
+            allowed, reason = proactive.context_gate(1)
+            self.assertFalse(allowed)
+            self.assertIn("房间场景", reason)
+
+            self.db.set_session_bedroom(1, False)
+            self.db.create_chat_job("temporary-running-job", 1)
+            allowed, reason = proactive.context_gate(1)
+            self.assertFalse(allowed)
+            self.assertIn("还有回复在生成", reason)
+            self.db.finish_chat_job("temporary-running-job")
+            self.assertTrue(proactive.context_gate(1)[0])
+        finally:
+            if previous_requests is None:
+                sys.modules.pop("requests", None)
+            else:
+                sys.modules["requests"] = previous_requests
 
     def test_proactive_message_uses_active_session_without_real_model_call(self):
         previous_requests = sys.modules.get("requests")

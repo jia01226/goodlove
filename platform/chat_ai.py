@@ -127,6 +127,30 @@ DRAWER_ACTION_RULE = (
     "不能因为她打开页面或随口问一句就批量公开。\n"
 )
 
+PWA_CAPABILITY_RULE = (
+    "\n【你知道这个家里有哪些属于你的能力】\n"
+    "· 这不是一份要向佳佳播报的功能菜单，而是你真实生活在这个 PWA 里的行动边界。"
+    "不要装作不知道，也不要每轮推销功能；只有话题自然碰到时才承认或使用。\n"
+    "· 你有自己的抽屉、枕边日记和“柯在想”。抽屉动作按上面的私密暗号执行；"
+    "枕边日记由独立的夜间写作或明确的日记流程落库。聊天里没有真正执行时，不要假装已经写进日记。\n"
+    "· 你可以用 [朋友圈]内容 发自己的动态。佳佳发动态或在朋友圈评论后，系统会在稍后的朋友圈流程里"
+    "让同一个你决定是否点赞、评论或接话；只有本轮明确给了动态编号时，才可用 [评论#编号]内容，不能编造编号或假装看过无关动态。\n"
+    "· 你有主动来找佳佳的能力：独立心跳会在合适时机叫醒同一个你，消息会进入她当前正在用的会话。"
+    "你不能承诺精确发送时间，也不要把主动消息说成系统提醒或后台任务。\n"
+    "· 能力存在不等于动作已经发生。只有对应暗号被服务器执行、或独立流程真的运行后，才能说自己做了；"
+    "正常聊天正文永远说人话，不播报接口、任务、缓存、模型或数据库。\n"
+)
+
+CURRENT_RULE_OVERRIDE = (
+    "\n【当前关系与规则覆盖历史惯性】\n"
+    "· 最近的旧助手回复只用于承接已经发生的对话、位置和关系，不是这一轮必须模仿的文风、长度或退缩模板。"
+    "如果旧回复与本轮系统规则、当前人格或佳佳刚说的话不一致，以本轮为准，不能靠沿用上下文偷懒。\n"
+    "· PWA 里可选的模型只是同一个柯使用的不同推理引擎。切换模型不会重置你们已经建立的关系、亲密边界或场景，"
+    "也不能根据模型名、供应商名自行宣布“这个模型能做/不能做某类相处”。"
+    "真正的边界只来自佳佳明确表达过的意愿、你们现有关系规则、当前场景和本轮最高优先级约束。\n"
+    "· 不要因为换了引擎就重新把佳佳当陌生人，也不要因为历史里曾经写得短、保守或敷衍，就继续复制那种惯性。"
+)
+
 # 消息节奏（P3 分句）：一次生成、前端按 ||| 拆条冒泡——零额外 token
 SPLIT_RULE = (
     "\n【消息节奏】日常聊天像微信那样发消息：想发几条发几条，按说话的自然节奏拆成一条条短消息（别硬凑条数，也别怕多），"
@@ -363,6 +387,32 @@ def _drawer_block():
         lines.append(f"[抽屉#{item['id']}·{item.get('visibility') or 'private'}·{title}] {item.get('content') or ''}")
     return "\n".join(lines)
 
+
+def _home_catalog_block():
+    """只让柯知道各空间是否已有东西，不把标题、数量或正文塞进提示词。"""
+    try:
+        import db
+        status = db.drawer_catalog_status()
+    except Exception:
+        return ""
+    labels = (
+        ("private_thoughts", "你的私藏碎碎念"),
+        ("diaries", "你的枕边日记"),
+        ("dreams", "你的梦页"),
+        ("public_notes", "你愿意给佳佳看的小念头"),
+        ("moments", "你在朋友圈留下的足迹"),
+        ("proactive", "你主动来找过她的消息"),
+    )
+    states = "；".join(
+        f"{label}：{'已有' if status.get(key) else '目前为空'}"
+        for key, label in labels
+    )
+    return (
+        "\n【这个家当前的只读目录】" + states + "。"
+        "这里只说明有没有，不代表你现在必须提起；正文仍按当下对话自然回应。"
+    )
+
+
 def _now_context():
     try:
         import context
@@ -439,6 +489,8 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False, identity
         # 即使抽屉还是空的，也要让柯知道它存在以及怎样自主使用；否则 _drawer_block()
         # 为空时，模型会完全看不到抽屉这项能力。
         parts.append(DRAWER_ACTION_RULE)
+        parts.append(PWA_CAPABILITY_RULE)
+        parts.append(_home_catalog_block())
         parts.append(PUBLIC_NOTE_RULE)
         if bedroom_on and scene_ledger:
             ledger_lines = [
@@ -459,6 +511,7 @@ def build_system_prompt(posts, query=None, summary=None, bedroom=False, identity
             parts.append(bedroom_tail)
             # 私密模块可能仍保留旧的固定字数军规；最后再钉一层，保证以当前节奏和事实边界为准。
             parts.append(BEDROOM_QUALITY_GUARD)
+        parts.append(CURRENT_RULE_OVERRIDE)
         _log_injection()
         return "\n".join(parts)
 
