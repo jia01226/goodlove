@@ -409,6 +409,14 @@ def api_chat():
                     yield event["payload"].encode("utf-8")
                 state = db.chat_job(job_id) or {}
                 if state.get("status") in ("done", "error") and not events:
+                    # 事件查询与状态查询之间，后台线程可能刚好完成最后一次落盘：
+                    # 此时第一次 events 为空、state 已 done，直接 break 会漏掉整条回复。
+                    final_events = db.chat_job_events(job_id, after_seq=last_seq)
+                    if final_events:
+                        for event in final_events:
+                            last_seq = event["seq"]
+                            yield event["payload"].encode("utf-8")
+                        continue
                     break
                 time.sleep(0.08)
         finally:
