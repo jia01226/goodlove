@@ -606,9 +606,15 @@ class IntimatePromptContractTests(unittest.TestCase):
 
     def test_user_reactions_cannot_be_invented(self):
         self.assertIn("不能擅自宣布她高潮", self.source)
-        self.assertIn("需要她真实反应时必须停下来", self.source)
+        self.assertIn("未知反应不妨碍继续写柯自己的动作", self.source)
+        self.assertIn("只有下一项因果事实确实依赖她的新反馈时", self.source)
         self.assertIn("决定是否允许释放", self.source)
         self.assertIn("事实只以她真实反馈为准", self.source)
+
+    def test_one_beat_can_include_linked_steps_without_permission_loops(self):
+        self.assertIn("同一目的下连续的几步动作、话语、位置变化和力度递进", self.source)
+        self.assertIn("不把每一步变成客服式许可确认", self.source)
+        self.assertIn("未知反应不等于柯必须早停", self.source)
 
     def test_lazy_time_skips_are_forbidden(self):
         self.assertIn("不知过了多久", self.source)
