@@ -4,6 +4,7 @@
 """
 import os, json, codecs, base64, mimetypes, requests, hashlib, time
 import attachment_reader
+from constants import ERROR_TAG
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 
@@ -25,6 +26,32 @@ def _img_data_url(rel):
     except Exception as e:
         print("[chat] 读图失败：", e)
         return None
+
+
+def _message_attachments(message):
+    """新消息读取 attachments；旧消息从单数 image/attachment_name 平滑回退。"""
+    raw = message.get("attachments")
+    if isinstance(raw, list):
+        items = [
+            {
+                "url": str(item.get("url") or "").strip(),
+                "name": str(item.get("name") or "").strip(),
+                "kind": str(item.get("kind") or "").strip(),
+            }
+            for item in raw
+            if isinstance(item, dict) and str(item.get("url") or "").strip()
+        ]
+        if items:
+            return items
+    image = str(message.get("image") or "").strip()
+    if not image:
+        return []
+    return [{
+        "url": image,
+        "name": str(message.get("attachment_name") or "").strip(),
+        "kind": "",
+    }]
+
 
 OR_URL = None  # 运行时由 API_BASE 拼出
 API_BASE = os.environ.get("API_BASE", "https://openrouter.ai/api/v1").rstrip("/")
@@ -571,6 +598,8 @@ def _buffered_bedroom_completion(messages, model, api_base, api_key, max_tokens,
     issues = _bedroom_output_issues(draft, latest_user_text)
     for meta in first_meta:
         yield meta
+    if any(isinstance(meta, tuple) and meta[0] == ERROR_TAG for meta in first_meta):
+        return
     if not issues:
         if draft:
             yield draft
@@ -649,43 +678,66 @@ def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_ke
         posts, query=query, summary=summary, bedroom=bedroom,
         identity_version=identity_version, scene_ledger=scene_ledger)
     messages = [{"role": "system", "content": sys_prompt}]
-    # 只把"最后一条带图的消息"作为真图发给模型看（省流量）；更早的图用文字代替
-    last_img_idx = max((i for i, m in enumerate(history) if m.get("image")), default=-1)
+    # 只把最后一条带附件的消息完整送给模型（可含多图/多文件）；更早附件只留人话提示。
+    last_attachment_idx = max(
+        (i for i, message in enumerate(history) if _message_attachments(message)),
+        default=-1)
+    remaining_file_chars = 40000
     for i, m in enumerate(history):
         role = "user" if m["author"] == "user" else "assistant"
-        img = m.get("image")
-        attachment_name = (m.get("attachment_name") or "").strip()
-        if img and i == last_img_idx:
-            data_url = _img_data_url(img)
-            if data_url:
-                content = []
-                if m["content"]:
-                    content.append({"type": "text", "text": m["content"]})
-                content.append({"type": "image_url", "image_url": {"url": data_url}})
-                messages.append({"role": role, "content": content})
-            else:
-                extracted = attachment_reader.extract_text(img, attachment_name)
-                display_name = extracted.get("name") or attachment_name or "附件"
-                if extracted.get("ok"):
+        attachments = _message_attachments(m)
+        if attachments and i == last_attachment_idx:
+            content = []
+            if m["content"]:
+                content.append({"type": "text", "text": m["content"]})
+            for attachment in attachments:
+                url = attachment["url"]
+                name = attachment["name"]
+                data_url = _img_data_url(url)
+                if data_url:
+                    content.append({"type": "image_url", "image_url": {"url": data_url}})
+                    continue
+                extracted = attachment_reader.extract_text(url, name)
+                display_name = extracted.get("name") or name or "附件"
+                if extracted.get("ok") and remaining_file_chars > 0:
+                    readable = (extracted.get("text") or "")[:remaining_file_chars]
+                    remaining_file_chars -= len(readable)
                     note = (
-                        f"\n\n用户同时发来文件《{display_name}》。\n"
+                        f"用户同时发来文件《{display_name}》。\n"
                         "===== 文件可读内容 =====\n"
-                        f"{extracted.get('text') or ''}\n"
+                        f"{readable}\n"
                         "===== 文件内容结束 ====="
+                    )
+                elif extracted.get("ok"):
+                    note = (
+                        f"用户同时发来文件《{display_name}》，但本轮多个附件的可读正文已达到上限。"
+                        "请明确告诉佳佳这一份没有完整读入，不要假装看过。"
                     )
                 else:
                     note = (
-                        f"\n\n用户发来文件《{display_name}》，但服务器未能读取："
+                        f"用户发来文件《{display_name}》，但服务器未能读取："
                         f"{extracted.get('error') or '未知原因'}。"
                         "不能假装看过；请明确告诉佳佳这个文件暂时没读成功。"
                     )
-                messages.append({"role": role, "content": (m["content"] or "") + note})
-        elif img:
-            label = attachment_name or os.path.basename(img.split("?")[0]) or "附件"
-            kind = "图片" if _img_data_url(img) else "文件"
+                content.append({"type": "text", "text": note})
             messages.append({
                 "role": role,
-                "content": (m["content"] or "") + f"（用户当时发过{kind}《{label}》）",
+                "content": content or [{"type": "text", "text": m["content"] or ""}],
+            })
+        elif attachments:
+            labels = []
+            for attachment in attachments:
+                label = attachment["name"] or os.path.basename(
+                    attachment["url"].split("?", 1)[0]) or "附件"
+                ext = os.path.splitext(label)[1].lower()
+                kind = "图片" if (
+                    attachment["kind"] == "image"
+                    or ext in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".bmp"}
+                ) else "文件"
+                labels.append(f"{kind}《{label}》")
+            messages.append({
+                "role": role,
+                "content": (m["content"] or "") + f"（用户当时发过{'、'.join(labels)}）",
             })
         else:
             messages.append({"role": role, "content": m["content"]})
@@ -758,9 +810,9 @@ def stream_completion(messages, model=None, api_base=None, api_key=None, max_tok
     try:
         yield from _stream_http(url, headers, payload, usage)
     except Exception as e:
-        # 网络挂了/接口连不上：绝不崩，吐一句人话（消息也能正常落库）
+        # 错误走带外信号，不能伪装成柯说的话污染聊天记录。
         print("[chat] 流式请求失败：", e)
-        yield f"[网络开小差了,没接上线,稍后再试试~]"
+        yield (ERROR_TAG, "网络断了一下，柯仍会尝试在服务器接完；稍后回来看看。")
     usage["total_ms"] = int((time.monotonic() - usage["_started_monotonic"]) * 1000)
     usage.pop("_started_monotonic", None)
     yield ("__usage__", usage)
@@ -771,7 +823,7 @@ def _stream_http(url, headers, payload, usage):
         usage["http_status"] = int(r.status_code or 0)
         r.encoding = "utf-8"
         if r.status_code != 200:
-            yield f"[没接上线：{r.status_code} {r.text[:200]}]"
+            yield (ERROR_TAG, f"上游这次没有接住（{r.status_code}），换个模型或稍后再试。")
             return
         # 增量 UTF-8 解码：正确处理跨网络分片被切断的多字节中文/emoji
         decoder = codecs.getincrementaldecoder("utf-8")("replace")

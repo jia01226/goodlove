@@ -190,6 +190,18 @@ class PrivateBoundaryTests(unittest.TestCase):
         self.assertTrue(self.db.delete_chat_session(new_sid))
         self.assertEqual(self.db.active_chat_session_id(), 1)
 
+    def test_active_session_api_can_restore_server_selected_window(self):
+        try:
+            import flask  # noqa: F401
+        except ImportError:
+            self.skipTest("本机精简 Python 未安装 Flask；部署前在服务器 venv 再跑")
+        import app as app_module
+
+        new_sid = self.db.create_chat_session("服务器记住的临时窗口")
+        response = app_module.app.test_client().get("/api/sessions/active")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["id"], new_sid)
+
     def test_bedroom_state_is_session_scoped_and_scene_ledger_starts_clean(self):
         old = self.db.add_message("assistant", "进入场景前的假旧回复", session_id=1)
         self.assertFalse(self.db.session_bedroom_state(1)["bedroom"])
@@ -259,6 +271,31 @@ class PrivateBoundaryTests(unittest.TestCase):
         self.assertEqual(item["image"], "/uploads/random-id.txt")
         self.assertEqual(item["attachment_name"], "佳佳的交接.txt")
 
+    def test_multiple_attachments_round_trip_and_delete_together(self):
+        attachments = [
+            {"url": "/uploads/one.png", "name": "第一张.png", "kind": "image"},
+            {"url": "/uploads/two.pdf", "name": "第二份.pdf", "kind": "document"},
+        ]
+        message_id = self.db.add_message(
+            "user", "一次发两个", session_id=1, attachments=attachments)
+        item = next(m for m in self.db.recent_messages(1) if m["id"] == message_id)
+        self.assertEqual(item["attachments"], attachments)
+        self.assertEqual(item["image"], "/uploads/one.png")
+        self.assertEqual(item["attachment_name"], "第一张.png")
+        self.assertEqual(
+            self.db.referenced_images(),
+            {"one.png", "two.pdf"},
+        )
+
+        self.assertTrue(self.db.delete_message(message_id))
+        conn = self.db.get_db()
+        remaining = conn.execute(
+            "SELECT COUNT(*) AS n FROM chat_attachments WHERE message_id=?",
+            (message_id,),
+        ).fetchone()["n"]
+        conn.close()
+        self.assertEqual(remaining, 0)
+
 
 class AttachmentAndPrivateRegressionTests(unittest.TestCase):
     """附件与关联回归只用临时目录；模型调用被替换为捕获函数。"""
@@ -316,6 +353,8 @@ class AttachmentAndPrivateRegressionTests(unittest.TestCase):
             png_path.write_bytes(
                 b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
                 b"\x08\x02\x00\x00\x00\x90wS\xde")
+            png_path_2 = Path(self.tmp.name) / "pixel-two.png"
+            png_path_2.write_bytes(png_path.read_bytes())
 
             captured = []
             original_prompt = chat_ai.build_system_prompt
@@ -337,8 +376,13 @@ class AttachmentAndPrivateRegressionTests(unittest.TestCase):
                      "attachment_name": "给柯的说明.txt"},
                 ], [], model="fake", sid=1))
                 list(chat_ai.stream_chat([
-                    {"author": "user", "content": "看图", "image": "/uploads/pixel.png",
-                     "attachment_name": "小图.png"},
+                    {
+                        "author": "user", "content": "看两张图",
+                        "attachments": [
+                            {"url": "/uploads/pixel.png", "name": "小图一.png", "kind": "image"},
+                            {"url": "/uploads/pixel-two.png", "name": "小图二.png", "kind": "image"},
+                        ],
+                    },
                 ], [], model="fake", sid=1))
             finally:
                 chat_ai.build_system_prompt = original_prompt
@@ -355,11 +399,20 @@ class AttachmentAndPrivateRegressionTests(unittest.TestCase):
             else:
                 sys.modules["db"] = previous_db
 
-        self.assertIn("模型必须收到的临时附件正文", captured[0][-1]["content"])
+        document_content = captured[0][-1]["content"]
+        self.assertIsInstance(document_content, list)
+        self.assertIn(
+            "模型必须收到的临时附件正文",
+            "\n".join(item.get("text", "") for item in document_content),
+        )
         image_content = captured[1][-1]["content"]
         self.assertIsInstance(image_content, list)
-        self.assertEqual(image_content[-1]["type"], "image_url")
-        self.assertTrue(image_content[-1]["image_url"]["url"].startswith("data:image/png;base64,"))
+        image_parts = [item for item in image_content if item["type"] == "image_url"]
+        self.assertEqual(len(image_parts), 2)
+        self.assertTrue(all(
+            item["image_url"]["url"].startswith("data:image/png;base64,")
+            for item in image_parts
+        ))
 
     def test_chat_generation_finishes_in_server_job_without_real_model_call(self):
         try:
@@ -398,6 +451,49 @@ class AttachmentAndPrivateRegressionTests(unittest.TestCase):
         self.assertEqual(messages[-1]["content"], "这是临时后台测试回复。")
         self.assertEqual(messages[-1]["thought_note"], "这是临时后台测试念头")
         self.assertEqual(self.db.active_chat_jobs(1), [])
+
+    def test_provider_error_is_streamed_but_not_saved_as_assistant_message(self):
+        try:
+            import flask  # noqa: F401
+        except ImportError:
+            self.skipTest("本机精简 Python 未安装 Flask；部署前在服务器 venv 再跑")
+        import app as app_module
+        import routes.chat as chat_route
+
+        original = chat_route.chat_ai.stream_chat
+
+        def fake_stream(_history, _posts, **_kwargs):
+            yield ("__error__", "假上游暂时不可用")
+            yield ("__usage__", {
+                "prompt_tokens": 0, "completion_tokens": 0,
+                "requested_model": "fake", "http_status": 503,
+            })
+
+        chat_route.chat_ai.stream_chat = fake_stream
+        try:
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={"text": "只用于错误边界测试", "session_id": 1, "model": "fake"},
+                buffered=True,
+            )
+            body = response.get_data(as_text=True)
+        finally:
+            chat_route.chat_ai.stream_chat = original
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("假上游暂时不可用", body)
+        messages = self.db.recent_messages(1)
+        self.assertEqual([item["author"] for item in messages], ["user"])
+        self.assertNotIn("假上游暂时不可用", repr(messages))
+
+    def test_frontend_supports_multi_select_and_server_active_session_restore(self):
+        source = (PLATFORM_DIR / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('type="file" multiple', source)
+        self.assertIn("pendingAttachments", source)
+        self.assertIn("attachments,session_id:currentSid", source)
+        self.assertIn('api("/api/sessions/active")', source)
+        visibility = source.split('document.addEventListener("visibilitychange"', 1)[1]
+        self.assertNotIn("markActiveSession()", visibility)
 
     def test_proactive_message_uses_active_session_without_real_model_call(self):
         previous_requests = sys.modules.get("requests")

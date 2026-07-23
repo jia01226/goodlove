@@ -13,8 +13,9 @@ import chat_ai
 import moments_ai
 import relationship_state
 from constants import (STATIC_DIR, MAIN_SESSION, SESSION_NAME_MAXLEN,
-                       DEFAULT_SESSION_NAME, USAGE_TAG, THINK_TAG,
-                       SSE_CONTENT_TYPE, SSE_HEADERS, IMG_EXT)
+                       DEFAULT_SESSION_NAME, USAGE_TAG, THINK_TAG, ERROR_TAG,
+                       SSE_CONTENT_TYPE, SSE_HEADERS, IMG_EXT,
+                       MAX_CHAT_ATTACHMENTS)
 from utils import guard, jbody, jget
 
 logger = logging.getLogger(__name__)
@@ -158,14 +159,43 @@ def _chat_sid(raw):
     return sid
 
 
+def _chat_attachments(data):
+    """收敛一条聊天的附件；只接受已经由本站 /api/upload 生成的本地 URL。"""
+    raw = data.get("attachments")
+    if not isinstance(raw, list):
+        raw = []
+    legacy_url = str(data.get("image") or "").strip()
+    if not raw and legacy_url:
+        raw = [{"url": legacy_url, "name": data.get("file_name") or ""}]
+    out = []
+    seen = set()
+    for item in raw[:MAX_CHAT_ATTACHMENTS]:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        if not url.startswith("/uploads/") or url in seen:
+            continue
+        seen.add(url)
+        name = os.path.basename(
+            str(item.get("name") or "").replace("\\", "/"))[:255]
+        ext = os.path.splitext(name or url.split("?", 1)[0])[1].lower()
+        out.append({
+            "url": url,
+            "name": name,
+            "kind": "image" if ext in IMG_EXT else "document",
+        })
+    return out
+
+
 @bp.post("/api/chat")
 @guard
 def api_chat():
     data = jbody()
     text = (data.get("text") or "").strip()
-    image = (data.get("image") or "").strip()
-    attachment_name = (data.get("file_name") or "").strip()[:255]
-    if not text and not image:
+    attachments = _chat_attachments(data)
+    image = attachments[0]["url"] if attachments else ""
+    attachment_name = attachments[0]["name"] if attachments else ""
+    if not text and not attachments:
         return jsonify({"error": "empty"}), 400
     sid = _chat_sid(data.get("session_id"))
     db.set_active_chat_session(sid)
@@ -182,7 +212,7 @@ def api_chat():
     user_message_id = db.add_message(
         "user", text, session_id=sid, image=image, msg_type=message_type,
         model=model, attachment_name=attachment_name,
-        scene_mode="bedroom" if bedroom else "")
+        scene_mode="bedroom" if bedroom else "", attachments=attachments)
     try:
         relationship_state.observe("user", text=text, bedroom=bedroom)
     except Exception as exc:
@@ -235,8 +265,8 @@ def api_chat():
             return ""
         # 先只回传消息 id。可展开的小念头必须来自本次同一个模型回复中的 <ke_note>，
         # 后端拆出后单独下发；供应商原始隐藏推理永远不传。
-        if image:
-            fallback_note = "我先认真看完，再决定怎么接住你。"
+        if attachments:
+            fallback_note = "我先把这些都看完，再决定怎么接住你。"
         elif bedroom:
             fallback_note = "这一刻的节奏，我来拿。"
         elif posts or mctx:
@@ -265,6 +295,12 @@ def api_chat():
                     )
                 elif piece[0] == THINK_TAG:
                     pass  # 原始隐藏推理仅由模型内部使用，不传给普通用户界面。
+                elif piece[0] == ERROR_TAG:
+                    note_waiting = False
+                    note_hold = ""
+                    yield ("data: " + json.dumps(
+                        {"error": str(piece[1] or "这次上游没有给出正文，点一下再试。")},
+                        ensure_ascii=False) + "\n\n").encode("utf-8")
                 continue
             if note_waiting:
                 note_hold += piece
@@ -478,6 +514,13 @@ def api_session_active():
     sid = _chat_sid(jget("id"))
     ok = db.set_active_chat_session(sid)
     return jsonify({"ok": ok, "id": sid})
+
+
+@bp.get("/api/sessions/active")
+@guard
+def api_session_active_get():
+    """新设备/新标签先向服务器询问真正的当前窗口，避免本地旧 sid 把主动消息带回旧对话。"""
+    return jsonify({"id": db.active_chat_session_id()})
 
 
 @bp.get("/api/sessions/state")

@@ -17,6 +17,7 @@ _load_env()
 
 import datetime, random, re, requests
 import db, chat_ai, moments_ai, relationship_state
+from constants import ERROR_TAG
 
 BARK_URL = os.environ.get("BARK_URL", "").strip()   # 形如 https://api.day.app/你的key
 APP_NAME = os.environ.get("APP_NAME", "助手").strip() or "助手"   # 推送/主动消息署名（可在 .env 改）
@@ -234,14 +235,19 @@ def generate_message(concern=None, night_watch=False, room_signal=None, session_
     )
     history = history + [{"author": "user", "content": directive}]
     text = ""
+    upstream_error = False
     for piece in chat_ai.stream_chat(history, posts, sid=session_id):
         if isinstance(piece, tuple):
             if piece[0] == "__usage__":
                 usage = piece[1] or {}
                 cost, it, ot = chat_ai.estimate_cost(chat_ai.MODEL, usage)
                 db.log_usage(chat_ai.MODEL, it, ot, cost)
+            elif piece[0] == ERROR_TAG:
+                upstream_error = True
             continue
         text += piece
+    if upstream_error:
+        return "", ""
     visible, public_note = split_public_note(text)
     return clean_push_reply(visible), public_note
 

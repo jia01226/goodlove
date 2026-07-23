@@ -157,7 +157,7 @@ async function send(){
   if(!t&&!img)return;$("#input").value="";
   if(msgs.querySelector(".empty"))msgs.innerHTML="";
   bubble("user",t,new Date().toTimeString().slice(0,5),img);clearPending();
-  let b=null,acc="";
+  let b=null,acc="",streamError="";
   const r=await api("/api/group/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img})});
   const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
   while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});
@@ -165,9 +165,10 @@ async function send(){
       if(!line.startsWith("data:"))continue;
       try{const e=JSON.parse(line.slice(5).trim());
         if(e.speaker){b=bubble(e.speaker,"");b.classList.add("typing");}
+        if(e.error)streamError=e.error;
         if(e.think&&b){b.classList.remove("typing");if(!b._th){const d=document.createElement("details");d.style.cssText="margin-bottom:6px;font-size:12.5px;color:var(--soft)";d.innerHTML='<summary style="cursor:pointer">💭 想了想…</summary>';const p=document.createElement("div");p.style.cssText="white-space:pre-wrap;margin-top:4px";d.appendChild(p);b.prepend(d);b._th=p;}b._th.textContent+=e.think;scroll();}if(e.t&&b){acc+=e.t;b.classList.remove("typing");b._tx.textContent=acc;scroll();}
       }catch(_){}}}
-  if(b){b.classList.remove("typing");if(!acc)b._tx.textContent="（没有回应，再试一次~）";}
+  if(b){b.classList.remove("typing");if(!acc)b._tx.textContent=streamError?("这次没有接上："+streamError):"这次模型没有返回正文，点一下再试。";}
 }
 $("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}});
 boot().catch(()=>{});

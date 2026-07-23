@@ -30,6 +30,18 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     created_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
+-- 一条聊天可带多张图片/多个文件；chat_messages.image 保留首个附件用于兼容旧页面。
+CREATE TABLE IF NOT EXISTS chat_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    name TEXT DEFAULT '',
+    kind TEXT DEFAULT '',
+    sort_order INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_chat_attachments_message
+ON chat_attachments(message_id, sort_order, id);
+
 -- 会话
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -462,7 +474,20 @@ def init_db():
 
 # ---- 便捷读写 ----
 def add_message(author, content, session_id=1, msg_type="text", image="", is_push=False,
-                model="", thought_note="", attachment_name="", scene_mode=""):
+                model="", thought_note="", attachment_name="", scene_mode="",
+                attachments=None):
+    attachments = [
+        {
+            "url": str(item.get("url") or "").strip(),
+            "name": str(item.get("name") or "").strip()[:255],
+            "kind": str(item.get("kind") or "").strip()[:20],
+        }
+        for item in (attachments or [])
+        if isinstance(item, dict) and str(item.get("url") or "").strip()
+    ]
+    if attachments:
+        image = attachments[0]["url"]
+        attachment_name = attachments[0]["name"]
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO chat_messages "
@@ -470,8 +495,15 @@ def add_message(author, content, session_id=1, msg_type="text", image="", is_pus
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (session_id, author, content, msg_type, image, 1 if is_push else 0,
          model or "", thought_note or "", attachment_name or "", scene_mode or ""))
+    mid = cur.lastrowid
+    for order, item in enumerate(attachments):
+        conn.execute(
+            "INSERT INTO chat_attachments (message_id,url,name,kind,sort_order) "
+            "VALUES (?,?,?,?,?)",
+            (mid, item["url"], item["name"], item["kind"], order),
+        )
     conn.execute("UPDATE chat_sessions SET updated_at=datetime('now','+8 hours') WHERE id=?", (session_id,))
-    conn.commit(); mid = cur.lastrowid; conn.close()
+    conn.commit(); conn.close()
     return mid
 
 def recent_messages(session_id=1, limit=40):
@@ -480,8 +512,31 @@ def recent_messages(session_id=1, limit=40):
         "SELECT id,author,content,created_at,image,model,thought_note,attachment_name "
         "FROM chat_messages WHERE session_id=? ORDER BY id DESC LIMIT ?",
         (session_id, limit)).fetchall()
+    items = [dict(r) for r in reversed(rows)]
+    message_ids = [item["id"] for item in items]
+    attached = {}
+    if message_ids:
+        marks = ",".join("?" for _ in message_ids)
+        for row in conn.execute(
+                "SELECT message_id,url,name,kind FROM chat_attachments "
+                f"WHERE message_id IN ({marks}) ORDER BY message_id,sort_order,id",
+                tuple(message_ids)).fetchall():
+            attached.setdefault(int(row["message_id"]), []).append({
+                "url": row["url"],
+                "name": row["name"] or "",
+                "kind": row["kind"] or "",
+            })
     conn.close()
-    return [dict(r) for r in reversed(rows)]
+    for item in items:
+        attachments = attached.get(int(item["id"]), [])
+        if not attachments and item.get("image"):
+            attachments = [{
+                "url": item["image"],
+                "name": item.get("attachment_name") or "",
+                "kind": "",
+            }]
+        item["attachments"] = attachments
+    return items
 
 def delete_message(mid):
     """删一条聊天消息并撤销它留下的派生上下文。
@@ -499,6 +554,7 @@ def delete_message(mid):
     session = conn.execute(
         "SELECT summarized_until FROM chat_sessions WHERE id=?", (row["session_id"],)
     ).fetchone()
+    conn.execute("DELETE FROM chat_attachments WHERE message_id=?", (mid,))
     conn.execute("DELETE FROM chat_messages WHERE id=?", (mid,))
     conn.execute("DELETE FROM embeddings WHERE kind='chat' AND ref_id=?", (mid,))
     if session and int(row["id"]) <= int(session["summarized_until"] or 0):
@@ -1392,8 +1448,12 @@ def referenced_images():
     """聊天里用到过的图片/文件名集合（uploads 里不在这份名单的=没人引用的废图）。"""
     conn = get_db()
     rows = conn.execute("SELECT DISTINCT image FROM chat_messages WHERE image != ''").fetchall()
+    attachment_rows = conn.execute(
+        "SELECT DISTINCT url FROM chat_attachments WHERE url != ''").fetchall()
     conn.close()
-    return {r["image"].split("/")[-1] for r in rows if r["image"]}
+    used = {r["image"].split("/")[-1] for r in rows if r["image"]}
+    used.update(r["url"].split("/")[-1] for r in attachment_rows if r["url"])
+    return used
 
 # ---- 枕边日记 ----
 def add_diary(title, content, mood="静", locked=0, kind="diary", source="app", created_at=None, author="柯"):
@@ -1664,6 +1724,9 @@ def delete_chat_session(sid):
     if int(sid) in (1, GROUP_SID):
         return False
     conn = get_db()
+    conn.execute(
+        "DELETE FROM chat_attachments WHERE message_id IN "
+        "(SELECT id FROM chat_messages WHERE session_id=?)", (sid,))
     conn.execute("DELETE FROM chat_messages WHERE session_id=?", (sid,))
     conn.execute("DELETE FROM chat_sessions WHERE id=?", (sid,))
     conn.execute(

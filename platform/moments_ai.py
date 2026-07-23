@@ -12,7 +12,7 @@ import threading
 
 import chat_ai
 import db
-from constants import MAIN_SESSION, THINK_TAG, USAGE_TAG
+from constants import ERROR_TAG, MAIN_SESSION, THINK_TAG, USAGE_TAG
 
 logger = logging.getLogger(__name__)
 _runner_lock = threading.Lock()
@@ -60,6 +60,7 @@ def _clean_visible(text, limit=500):
 
 def _collect(history, posts):
     text = ""
+    upstream_error = ""
     for piece in chat_ai.stream_chat(history, posts):
         if isinstance(piece, tuple):
             if piece[0] == USAGE_TAG:
@@ -68,11 +69,13 @@ def _collect(history, posts):
                 db.log_usage(chat_ai.MODEL, it, ot, cost)
             elif piece[0] == THINK_TAG:
                 pass  # 朋友圈只保存公开回复，raw reasoning 不落库。
+            elif piece[0] == ERROR_TAG:
+                upstream_error = str(piece[1] or "上游没有返回正文")
             continue
         text += piece
+    if upstream_error:
+        raise RuntimeError(upstream_error)
     text = text.strip()
-    if text.startswith("[没接上线") or text.startswith("[网络开小差"):
-        raise RuntimeError(text[:180])
     return text
 
 

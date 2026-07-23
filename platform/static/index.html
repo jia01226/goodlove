@@ -50,9 +50,24 @@
     backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);border:1px solid var(--line)}
   .me .bubble{background:var(--me);border-bottom-right-radius:6px}
   .gude .bubble{background:var(--glass);border-bottom-left-radius:6px}
+  .attachment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;max-width:300px}
+  .attachment-grid.single{display:block;max-width:240px}
+  .attachment-grid img{width:100%;height:128px;object-fit:cover;border-radius:10px;display:block;cursor:pointer}
+  .attachment-grid.single img{width:auto;max-width:240px;height:auto;max-height:300px}
+  .attachment-file{display:block;color:var(--gold-deep);text-decoration:none;padding:7px 0}
+  .attachment-grid+.bubble-text,.attachment-file+.bubble-text{display:block;margin-top:7px}
   .tag{font-size:10px;color:var(--soft);margin:0 6px 2px}
   .empty{text-align:center;color:var(--soft);font-size:14px;margin-top:50px;line-height:2}
   footer{padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--glass2);backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);border-top:1px solid var(--line)}
+  .pending-bar{display:none;max-width:680px;margin:0 auto 6px;padding:7px;background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:14px}
+  .pending-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:12px;color:var(--soft)}
+  .pending-clear{border:0;background:none;color:var(--gold-deep);font:inherit;padding:2px 5px}
+  .pending-list{display:flex;gap:7px;overflow-x:auto;padding-bottom:1px}
+  .pending-item{position:relative;flex:0 0 68px;height:68px;border-radius:11px;background:rgba(255,255,255,.55);border:1px solid var(--line);overflow:hidden}
+  .pending-item img{width:100%;height:100%;object-fit:cover;display:block}
+  .pending-file{height:100%;display:flex;align-items:center;justify-content:center;padding:7px;text-align:center;font-size:10px;line-height:1.25;color:var(--soft);word-break:break-all}
+  .pending-state{position:absolute;inset:auto 0 0;padding:2px 3px;background:rgba(62,48,40,.68);color:white;font-size:9px;text-align:center}
+  .pending-remove{position:absolute;right:2px;top:2px;width:19px;height:19px;border:0;border-radius:50%;background:rgba(45,35,31,.72);color:#fff;font-size:12px;line-height:19px;padding:0}
   .composer{display:flex;gap:8px;align-items:flex-end;max-width:680px;margin:0 auto}
   textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:20px;padding:10px 14px;font-size:15px;font-family:inherit;max-height:120px;outline:none;
     background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:var(--ink)}
@@ -243,10 +258,9 @@
   </section>
 </main>
 <footer id="footer">
-  <div id="pendingBar" style="display:none;align-items:center;gap:8px;max-width:680px;margin:0 auto 6px;padding:6px 8px;background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:12px">
-    <img id="pendingThumb" style="width:40px;height:40px;object-fit:cover;border-radius:8px;display:none" />
-    <span id="pendingName" style="flex:1;font-size:13px;color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-    <span onclick="clearPending()" style="color:var(--soft);padding:2px 8px">✕</span>
+  <div id="pendingBar" class="pending-bar">
+    <div class="pending-head"><span id="pendingSummary">已选 0 个附件</span><button class="pending-clear" type="button" onclick="clearPending()">全部清空</button></div>
+    <div id="pendingList" class="pending-list"></div>
   </div>
   <div class="composer">
     <button class="send" style="background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);color:var(--gold-deep);font-size:24px;line-height:1" onclick="document.getElementById('file').click()" title="拍照/相册/文件">＋</button>
@@ -254,7 +268,7 @@
     <textarea id="input" rows="1" placeholder="说点什么…"></textarea>
     <button class="send" onclick="send()">➤</button>
   </div>
-  <input id="file" type="file" accept="image/*,.pdf,.txt,.md,.markdown,.docx,.xlsx,.pptx,.csv,.tsv,.json,.jsonl,.log,.html,.htm,.xml,.yaml,.yml,.ini,.cfg,.py,.js,.ts,.css,.sql" style="display:none" onchange="onPickFile(this)" />
+  <input id="file" type="file" multiple accept="image/*,.pdf,.txt,.md,.markdown,.docx,.xlsx,.pptx,.csv,.tsv,.json,.jsonl,.log,.html,.htm,.xml,.yaml,.yml,.ini,.cfg,.py,.js,.ts,.css,.sql" style="display:none" onchange="onPickFile(this)" />
 </footer>
 <nav>
   <button data-v="chatView" class="on"><span class="ic">💬</span>聊天</button>
@@ -315,11 +329,17 @@ async function api(path,opt){const r=window.Goodlove?await Goodlove.api(path,opt
 function nowHM(){const d=new Date();return pad2(d.getHours())+":"+pad2(d.getMinutes());}
 function fmtTime(s){if(!s)return"";const m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);if(!m)return"";const d=m[1]+"-"+m[2]+"-"+m[3];return (d===todayStr()?"":m[2]+"/"+m[3]+" ")+m[4]+":"+m[5];}
 function isImg(u){return /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(u||"");}
-function bubble(role,text,time,image,mid,attachmentName){const w=document.createElement("div");w.className="msg "+(role==="user"?"me":"gude");
+function attachmentItems(image,attachmentName,attachments){
+  const items=(Array.isArray(attachments)?attachments:[]).map(a=>({url:String(a?.url||""),name:String(a?.name||""),kind:String(a?.kind||"")})).filter(a=>a.url);
+  if(!items.length&&image)items.push({url:image,name:attachmentName||"",kind:isImg(image)?"image":"document"});
+  return items;}
+function bubble(role,text,time,image,mid,attachmentName,attachments){const w=document.createElement("div");w.className="msg "+(role==="user"?"me":"gude");
   const who=role==="user"?"我":AI_NAME;const tag=document.createElement("span");tag.className="tag";tag.textContent=who+(time?" · "+time:"");
   const bb=document.createElement("div");bb.className="bubble";
-  if(image){if(isImg(image)){const im=document.createElement("img");im.onload=scroll;im.src=image;im.alt=attachmentName||"聊天图片";im.style.cssText="max-width:200px;max-height:240px;border-radius:10px;display:block;cursor:pointer";im.onclick=()=>window.open(image);bb.appendChild(im);}else{const a=document.createElement("a");a.href=image;a.target="_blank";a.textContent="📎 "+(attachmentName||image.split("/").pop());a.style.color="var(--gold-deep)";bb.appendChild(a);}}
-  const tx=document.createElement("span");if(text){tx.textContent=text;if(image)tx.style.cssText="display:block;margin-top:6px";}bb.appendChild(tx);
+  const files=attachmentItems(image,attachmentName,attachments);const images=files.filter(a=>a.kind==="image"||isImg(a.url)||isImg(a.name));
+  if(images.length){const grid=document.createElement("div");grid.className="attachment-grid"+(images.length===1?" single":"");images.forEach(item=>{const im=document.createElement("img");im.loading="lazy";im.onload=scroll;im.src=item.url;im.alt=item.name||"聊天图片";im.onclick=()=>window.open(item.url);grid.appendChild(im);});bb.appendChild(grid);}
+  files.filter(a=>!images.includes(a)).forEach(item=>{const a=document.createElement("a");a.className="attachment-file";a.href=item.url;a.target="_blank";a.rel="noopener";a.textContent="📎 "+(item.name||item.url.split("/").pop());bb.appendChild(a);});
+  const tx=document.createElement("span");tx.className="bubble-text";if(text)tx.textContent=text;bb.appendChild(tx);
   if(role==="user"){w.appendChild(bb);w.appendChild(tag);}else{w.appendChild(tag);w.appendChild(bb);}
   msgs.appendChild(w);scroll();bb._tag=tag;bb._who=who;bb._tx=tx;if(mid)bindLongPress(bb,mid,role);return bb;}
 function setBubbleTime(bb,t){if(bb&&bb._tag)bb._tag.textContent=bb._who+" · "+t;}
@@ -398,7 +418,8 @@ function toast(t){const d=document.createElement("div");d.textContent=t;
   d.style.cssText="position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:14px;padding:9px 16px;font-size:14px;color:var(--gold-deep);z-index:16;box-shadow:var(--shadow)";
   document.body.appendChild(d);setTimeout(()=>d.remove(),1800);}
 async function delMsg(mid){if(!confirm("删掉这条消息？（走样、说错的话，删了它就不在对话里了）"))return;try{await api("/api/messages/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:mid})});loadMsgs();}catch(e){}}
-let pending=null;
+const MAX_PENDING_ATTACHMENTS=9;
+let pendingAttachments=[];
 async function prepareUploadFile(file){
   if(!file.type.startsWith("image/")||file.type==="image/gif")return file;
   const needsConversion=/\.(heic|heif|bmp)$/i.test(file.name)||file.size>900*1024;
@@ -414,15 +435,32 @@ async function prepareUploadFile(file){
     return new File([blob],file.name.replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg",lastModified:file.lastModified});
   }catch(_){return file;}finally{URL.revokeObjectURL(url);}
 }
-async function onPickFile(input){const f=input.files&&input.files[0];input.value="";if(!f)return;
-  $("#pendingBar").style.display="flex";$("#pendingThumb").style.display="none";$("#pendingName").textContent="上传中… "+f.name;
-  try{const uploadFile=await prepareUploadFile(f);const fd=new FormData();fd.append("file",uploadFile);fd.append("original_name",f.name);const r=await api("/api/upload",{method:"POST",body:fd});
+function renderPending(){
+  const bar=$("#pendingBar"),list=$("#pendingList");bar.style.display=pendingAttachments.length?"block":"none";
+  $("#pendingSummary").textContent=pendingAttachments.some(x=>x.status==="uploading")?`正在上传 · ${pendingAttachments.length}/${MAX_PENDING_ATTACHMENTS}`:`已选 ${pendingAttachments.filter(x=>x.status==="ready").length} 个 · 最多 ${MAX_PENDING_ATTACHMENTS} 个`;
+  list.innerHTML="";
+  pendingAttachments.forEach(item=>{const card=document.createElement("div");card.className="pending-item";
+    if(item.preview||item.url&&item.kind==="image"){const im=document.createElement("img");im.src=item.preview||item.url;im.alt=item.name;card.appendChild(im);}
+    else{const f=document.createElement("div");f.className="pending-file";f.textContent="📎 "+item.name;card.appendChild(f);}
+    if(item.status!=="ready"){const state=document.createElement("div");state.className="pending-state";state.textContent=item.status==="error"?"上传失败":"上传中…";card.appendChild(state);}
+    const remove=document.createElement("button");remove.type="button";remove.className="pending-remove";remove.textContent="×";remove.onclick=()=>removePending(item.id);card.appendChild(remove);list.appendChild(card);});
+}
+function removePending(id){const item=pendingAttachments.find(x=>x.id===id);if(item?.preview)URL.revokeObjectURL(item.preview);pendingAttachments=pendingAttachments.filter(x=>x.id!==id);renderPending();}
+async function uploadPending(item,file){
+  try{const uploadFile=await prepareUploadFile(file);const fd=new FormData();fd.append("file",uploadFile);fd.append("original_name",file.name);const r=await api("/api/upload",{method:"POST",body:fd});
     const raw=await r.text();let d={};try{d=JSON.parse(raw);}catch(_){d={error:r.status===413?"文件超过 30MB，请压缩后再发":"服务器没有接住这个文件"};}
-    if(!r.ok||d.error){pending=null;$("#pendingName").textContent="上传失败："+(d.error||("HTTP "+r.status));return;}
-    pending=d;$("#pendingName").textContent=d.name||"已选好";
-    if(d.is_image){$("#pendingThumb").src=d.url;$("#pendingThumb").style.display="block";}
-  }catch(e){$("#pendingName").textContent="上传失败："+((e&&e.message)||e);}}
-function clearPending(){pending=null;$("#pendingBar").style.display="none";$("#pendingThumb").src="";$("#pendingName").textContent="";}
+    if(!r.ok||d.error)throw new Error(d.error||("HTTP "+r.status));
+    Object.assign(item,{url:d.url,name:d.name||file.name,kind:d.kind||(d.is_image?"image":"document"),status:"ready",error:""});
+  }catch(e){item.status="error";item.error=(e&&e.message)||String(e);toast("有个附件没上传成功："+item.name);}
+  finally{if(item.preview){URL.revokeObjectURL(item.preview);item.preview="";}renderPending();}}
+async function onPickFile(input){const files=Array.from(input.files||[]);input.value="";if(!files.length)return;
+  const room=MAX_PENDING_ATTACHMENTS-pendingAttachments.length;if(room<=0){toast("一次最多发 9 个附件");return;}
+  if(files.length>room)toast(`一次最多 9 个，先放进了前 ${room} 个`);
+  const selected=files.slice(0,room);const tasks=[];
+  selected.forEach(file=>{const item={id:(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random()),name:file.name,kind:file.type.startsWith("image/")?"image":"document",status:"uploading",preview:file.type.startsWith("image/")?URL.createObjectURL(file):"",url:""};pendingAttachments.push(item);tasks.push(uploadPending(item,file));});
+  renderPending();await Promise.all(tasks);
+}
+function clearPending(){pendingAttachments.forEach(x=>{if(x.preview)URL.revokeObjectURL(x.preview);});pendingAttachments=[];renderPending();}
 function scroll(){const m=$("main");m.scrollTop=m.scrollHeight;}
 function scrollHard(){scroll();requestAnimationFrame(scroll);setTimeout(scroll,150);setTimeout(scroll,500);}
 
@@ -432,14 +470,14 @@ var selectedModel=(()=>{try{return localStorage.getItem("chat_model")||"";}catch
 var pendingDiaryRequestId=0;
 function setChatModel(model){selectedModel=model||"";try{localStorage.setItem("chat_model",selectedModel);}catch(_){}}
 function markActiveSession(id=currentSid){api("/api/sessions/active",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})}).catch(()=>{});}
-function setSid(id){currentSid=+id||1;try{localStorage.setItem("sid",currentSid);}catch(_){}markActiveSession();}
+function setSid(id,announce=true){currentSid=+id||1;try{localStorage.setItem("sid",currentSid);}catch(_){}if(announce)markActiveSession();}
 // 分句显示：助手消息按 ||| 拆成几条泡泡（像微信一句句发）；没分隔符就原样一条
 function splitParts(s){return (s||"").split(/\s*\|\|\|\s*/).map(x=>x.trim()).filter(Boolean);}
 function renderMsg(m){const t=fmtTime(m.created_at);
-  if(m.author==="user")return bubble("user",m.content,t,m.image,m.id,m.attachment_name);
+  if(m.author==="user")return bubble("user",m.content,t,m.image,m.id,m.attachment_name,m.attachments);
   const parts=splitParts(m.content);
-  if(parts.length<=1){const bb=bubble(m.author,parts[0]||m.content,t,m.image,m.id,m.attachment_name);if(m.thought_note)attachThinkingSummary(bb,m.thought_note);return bb;}
-  parts.forEach((p,i)=>{const bb=bubble("assistant",p,t,i===0?m.image:"",m.id,i===0?m.attachment_name:"");if(i===0&&m.thought_note)attachThinkingSummary(bb,m.thought_note);});}  // 每条都带时间:标签同宽才对得齐；长按可删
+  if(parts.length<=1){const bb=bubble(m.author,parts[0]||m.content,t,m.image,m.id,m.attachment_name,m.attachments);if(m.thought_note)attachThinkingSummary(bb,m.thought_note);return bb;}
+  parts.forEach((p,i)=>{const bb=bubble("assistant",p,t,i===0?m.image:"",m.id,i===0?m.attachment_name:"",i===0?m.attachments:[]);if(i===0&&m.thought_note)attachThinkingSummary(bb,m.thought_note);});}  // 每条都带时间:标签同宽才对得齐；长按可删
 let lastMessageId=0;
 async function loadMsgs(){try{const r=await api("/api/messages?session_id="+currentSid);const arr=await r.json();lastMessageId=Math.max(0,...arr.map(m=>Number(m.id)||0));msgs.innerHTML="";if(!arr.length){msgs.innerHTML='<div class="empty">跟它说说话吧~</div>';}arr.forEach(renderMsg);scrollHard();}catch(e){}}
 let jobWatchTimer=0;
@@ -449,7 +487,7 @@ function closeDrawer(){$("#drawer").style.display="none";}
 async function loadSessions(){try{const r=await api("/api/sessions");const arr=await r.json();
   $("#sessList").innerHTML=arr.map(s=>{
     const on=s.id===currentSid;
-    const sub=s.last_at?fmtTime(s.last_at):"还没聊过";
+    const sub=(s.last_at?fmtTime(s.last_at):"还没聊过")+(on?" · 主动消息到这里":"");
     return `<div class="card" style="margin-bottom:8px;${on?'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div style="flex:1;min-width:0" onclick="switchSession(${s.id},'${esc(s.name).replace(/'/g,"")}')">
@@ -476,7 +514,10 @@ function toggleBd(){return setBedroom(!BD);}
 let bdTapCount=0,bdTapTimer=0;
 function handleBdTap(){clearTimeout(bdTapTimer);bdTapCount++;bdTapTimer=setTimeout(()=>bdTapCount=0,1100);if(bdTapCount<3)return;bdTapCount=0;toggleBd();}
 updateBd();
-async function send(){const t=$("#input").value.trim();const img=pending?pending.url:"";const fileName=pending?pending.name:"";if(!t&&!img)return;$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";const userBubble=bubble("user",t,nowHM(),img,undefined,fileName);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="";const bubbles=[b];const bd=BD;
+async function send(){const t=$("#input").value.trim();const uploading=pendingAttachments.some(x=>x.status==="uploading");if(uploading){toast("附件还在上传，等一下就好");return;}
+  const attachments=pendingAttachments.filter(x=>x.status==="ready").map(x=>({url:x.url,name:x.name,kind:x.kind}));if(!t&&!attachments.length)return;
+  const first=attachments[0]||{};const img=first.url||"",fileName=first.name||"";$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";
+  const userBubble=bubble("user",t,nowHM(),img,undefined,fileName,attachments);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="",streamError="",jobId="";const bubbles=[b];const bd=BD;
   // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发；卧室(🔥)一整段沉浸，绝不拆
   function paint(){
     if(bd){b._tx.textContent=acc.replace(/\s*\|\|\|\s*/g,"\n").replace(/\|+\s*$/,"").trim();scroll();return;}
@@ -484,12 +525,18 @@ async function send(){const t=$("#input").value.trim();const img=pending?pending
     while(bubbles.length<parts.length)bubbles.push(bubble("assistant",""));
     parts.forEach((p,i)=>{let s=p;if(i===parts.length-1)s=s.replace(/\|+\s*$/,"");bubbles[i]._tx.textContent=s.trim();});scroll();}
   const diaryRequestId=pendingDiaryRequestId||undefined;
-  const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,file_name:fileName,session_id:currentSid,bedroom:BD,model:selectedModel||undefined,diary_request_id:diaryRequestId})});
-  const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
-  while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(typeof e.bedroom==="boolean")rememberBd(e.bedroom);if(e.user_message_id){lastMessageId=Math.max(lastMessageId,Number(e.user_message_id)||0);bindLongPress(userBubble,e.user_message_id,"user");}if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.assistant_message_id){lastMessageId=Math.max(lastMessageId,Number(e.assistant_message_id)||0);bubbles.forEach(bb=>bindLongPress(bb,e.assistant_message_id,"assistant"));}if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
+  try{
+    const r=await api("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,image:img,file_name:fileName,attachments,session_id:currentSid,bedroom:BD,model:selectedModel||undefined,diary_request_id:diaryRequestId})});
+    if(!r.ok)throw new Error("服务器返回 HTTP "+r.status);
+    if(!r.body)throw new Error("浏览器没有接到回复流");
+    const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
+    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(typeof e.bedroom==="boolean")rememberBd(e.bedroom);if(e.job_id)jobId=e.job_id;if(e.error)streamError=e.error;if(e.user_message_id){lastMessageId=Math.max(lastMessageId,Number(e.user_message_id)||0);bindLongPress(userBubble,e.user_message_id,"user");}if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.assistant_message_id){lastMessageId=Math.max(lastMessageId,Number(e.assistant_message_id)||0);bubbles.forEach(bb=>bindLongPress(bb,e.assistant_message_id,"assistant"));}if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
+  }catch(e){streamError=(e&&e.message)||"连接中断";}
   if(diaryRequestId)pendingDiaryRequestId=0;
   b.classList.remove("typing");
-  if(!acc){b._tx.textContent="（没有回应，再试一次~）";return;}
+  if(!acc){
+    if(jobId&&/连接|网络|回复流|fetch/i.test(streamError)){b.parentElement.remove();toast("页面断开了，柯仍在服务器继续说");watchBackgroundReplies();return;}
+    b._tx.textContent=streamError?"这次没有接上："+streamError:"这次模型没有返回正文，点一下再试。";setBubbleTime(b,nowHM());return;}
   while(bubbles.length>1&&!bubbles[bubbles.length-1]._tx.textContent){bubbles.pop().parentElement.remove();}
   bubbles.forEach(bb=>setBubbleTime(bb,nowHM()));}  // 每条都挂时间,泡泡才对得齐
 $("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}});
@@ -630,12 +677,19 @@ async function onPickWallpaper(input){const f=input.files&&input.files[0];input.
   }catch(e){alert("壁纸设置失败~");}}
 function clearWallpaper(){try{localStorage.removeItem("wallpaper");}catch(_){}applyWallpaper("");}
 applyWallpaper((()=>{try{return localStorage.getItem("wallpaper")||"";}catch(_){return "";}})());
-function boot(){
+async function openPushedSession(sid){
+  if(!sid||sid===currentSid){watchBackgroundReplies();return;}
+  setSid(sid,false);
+  try{const arr=await(await api("/api/sessions")).json();const s=arr.find(x=>x.id===currentSid);$("#hdrTitle").textContent=s?.name||"AI 助手";}catch(_){}
+  await syncBedroomState();watchBackgroundReplies();
+}
+async function boot(){
   loadWhoami();
   const bootParams=new URLSearchParams(location.search);
   const pushedSid=Number(bootParams.get("session_id")||0);
-  if(pushedSid>0)setSid(pushedSid);else markActiveSession();
-  if(currentSid!==1){api("/api/sessions").then(r=>r.json()).then(a=>{const s=a.find(x=>x.id===currentSid);if(s)$("#hdrTitle").textContent=s.name;else setSid(1);}).catch(()=>{});}
+  if(pushedSid>0)setSid(pushedSid);
+  else{try{const d=await(await api("/api/sessions/active")).json();if(d?.id)setSid(d.id,false);}catch(_){}}
+  if(currentSid!==1){api("/api/sessions").then(r=>r.json()).then(a=>{const s=a.find(x=>x.id===currentSid);if(s)$("#hdrTitle").textContent=s.name;else setSid(1,false);}).catch(()=>{});}
   watchBackgroundReplies();
   const diaryId=Number(bootParams.get("diary_request")||0);
   const drawerRequest=bootParams.get("drawer_request")==="1";
@@ -650,8 +704,8 @@ function boot(){
   if(diaryId||drawerRequest||roomRequest||pushedSid)history.replaceState({},"",location.pathname+location.hash);
   if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{});}}
 boot();
-if("serviceWorker" in navigator){navigator.serviceWorker.addEventListener("message",event=>{const d=event.data||{};if(d.type!=="GOODLOVE_PUSH")return;try{const u=new URL(d.url||"/",location.origin);const sid=Number(u.searchParams.get("session_id")||0);if(!sid||sid===currentSid)watchBackgroundReplies();}catch(_){watchBackgroundReplies();}});}
-document.addEventListener("visibilitychange",()=>{if(!document.hidden){markActiveSession();syncBedroomState();watchBackgroundReplies();}});
+if("serviceWorker" in navigator){navigator.serviceWorker.addEventListener("message",event=>{const d=event.data||{};if(d.type!=="GOODLOVE_PUSH")return;try{const u=new URL(d.url||"/",location.origin);const sid=Number(u.searchParams.get("session_id")||0);openPushedSession(sid);}catch(_){watchBackgroundReplies();}});}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){syncBedroomState();watchBackgroundReplies();}});
 </script>
 </body>
 </html>

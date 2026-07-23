@@ -5,7 +5,7 @@ from flask import Blueprint, Response, jsonify, send_from_directory
 
 import db
 import chat_ai
-from constants import (STATIC_DIR, GROUP_SESSION, USAGE_TAG, THINK_TAG,
+from constants import (STATIC_DIR, GROUP_SESSION, USAGE_TAG, THINK_TAG, ERROR_TAG,
                        SSE_CONTENT_TYPE, SSE_HEADERS)
 from utils import guard, jbody
 
@@ -68,6 +68,8 @@ def api_group_chat():
                     db.log_usage(model_used, it, ot, cost)
                 elif piece[0] == THINK_TAG:
                     yield ("data: " + json.dumps({"think": piece[1]}, ensure_ascii=False) + "\n\n").encode("utf-8")
+                elif piece[0] == ERROR_TAG:
+                    yield ("data: " + json.dumps({"error": piece[1]}, ensure_ascii=False) + "\n\n").encode("utf-8")
                 continue
             acc += piece
             yield ("data: " + json.dumps({"t": piece}, ensure_ascii=False) + "\n\n").encode("utf-8")
