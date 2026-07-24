@@ -1118,6 +1118,31 @@ class ModelGatewayRoutingTests(unittest.TestCase):
             payload["options"],
         )
 
+    def test_disabled_primary_gateway_is_hidden_and_never_used_as_fallback(self):
+        import chat_ai
+
+        original_enabled = chat_ai.PRIMARY_GATEWAY_ENABLED
+        original_available = chat_ai.claude_exec.is_available
+        chat_ai.PRIMARY_GATEWAY_ENABLED = False
+        chat_ai.claude_exec.is_available = lambda: True
+        try:
+            payload = chat_ai.available_models()
+            fallback = chat_ai.resolve_gateway("claude-fable-5")
+        finally:
+            chat_ai.PRIMARY_GATEWAY_ENABLED = original_enabled
+            chat_ai.claude_exec.is_available = original_available
+
+        self.assertEqual(payload["default"], chat_ai.claude_exec.MODEL_ID)
+        self.assertNotIn(chat_ai.MODEL, payload["models"])
+        self.assertEqual(
+            fallback,
+            (
+                chat_ai.claude_exec.MODEL_ID,
+                chat_ai.claude_exec.GATEWAY_BASE,
+                "",
+            ),
+        )
+
 
 class ClaudeExecAdapterTests(unittest.TestCase):
     """用本地假 CLI 验证协议、缓存用量和密钥隔离，不调用 Claude。"""

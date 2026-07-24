@@ -58,6 +58,9 @@ OR_URL = None  # 运行时由 API_BASE 拼出
 API_BASE = os.environ.get("API_BASE", "https://openrouter.ai/api/v1").rstrip("/")
 MODEL = os.environ.get("MODEL", "anthropic/claude-sonnet-4.5")
 API_KEY = os.environ.get("API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
+PRIMARY_GATEWAY_ENABLED = os.environ.get(
+    "PRIMARY_GATEWAY_ENABLED", "1"
+).strip().lower() not in {"0", "false", "no", "off"}
 PERSONA_FILE = os.path.join(os.path.dirname(__file__), "persona.md")
 PERSONA_DIR = os.path.join(os.path.dirname(__file__), "personas")
 # 当前角色：.env 里 CHARACTER=柯 → 读 personas/柯.md；不设则用老的 persona.md
@@ -243,12 +246,27 @@ DEEPSEEK_MODEL_WHITELIST = [s.strip() for s in os.environ.get(
 ).split(",") if s.strip()]
 DEEPSEEK_ENABLED = bool(DEEPSEEK_API_BASE and DEEPSEEK_API_KEY)
 
+def default_gateway():
+    """返回当前真正的默认线路；停用旧中转后优先本人 Claude 订阅。"""
+    if PRIMARY_GATEWAY_ENABLED:
+        return MODEL, None, None
+    if claude_exec.is_available():
+        return claude_exec.MODEL_ID, claude_exec.GATEWAY_BASE, ""
+    if DEEPSEEK_ENABLED:
+        return DEEPSEEK_MODEL, DEEPSEEK_API_BASE, DEEPSEEK_API_KEY
+    if GPT_ENABLED:
+        return GPT_MODEL, GPT_API_BASE, GPT_API_KEY
+    return MODEL, None, None
+
+
 def resolve_model(req):
-    """前端请求的模型：在白名单里才认，否则用默认 MODEL。"""
+    """兼容旧调用；主中转关闭时不会再回落到它。"""
     req = (req or "").strip()
-    if req and (req == MODEL or req in MODEL_WHITELIST):
+    if PRIMARY_GATEWAY_ENABLED and req and (
+        req == MODEL or req in MODEL_WHITELIST
+    ):
         return req
-    return MODEL
+    return default_gateway()[0]
 
 def resolve_gateway(req):
     """返回本轮模型和对应通道；未启用或名单外的第三方请求安全回落默认通道。"""
@@ -259,16 +277,19 @@ def resolve_gateway(req):
         return req, DEEPSEEK_API_BASE, DEEPSEEK_API_KEY
     if GPT_ENABLED and req in GPT_MODEL_WHITELIST:
         return req, GPT_API_BASE, GPT_API_KEY
-    return resolve_model(req), None, None
+    if PRIMARY_GATEWAY_ENABLED and (not req or req == MODEL or req in MODEL_WHITELIST):
+        return resolve_model(req), None, None
+    return default_gateway()
 
 def available_models():
     """PWA 模型选择器数据：独立通道只有在服务器配置完整后才出现。"""
     models = []
     options = []
-    for model in [MODEL, *MODEL_WHITELIST]:
-        if model and model not in models:
-            models.append(model)
-            options.append({"id": model, "provider": "claude"})
+    if PRIMARY_GATEWAY_ENABLED:
+        for model in [MODEL, *MODEL_WHITELIST]:
+            if model and model not in models:
+                models.append(model)
+                options.append({"id": model, "provider": "claude"})
     if claude_exec.is_available() and claude_exec.MODEL_ID not in models:
         models.append(claude_exec.MODEL_ID)
         options.append({
@@ -287,7 +308,7 @@ def available_models():
                 options.append({"id": model, "provider": "deepseek"})
     return {
         "models": models,
-        "default": MODEL,
+        "default": default_gateway()[0],
         "options": options,
         "claude_subscription_enabled": claude_exec.is_available(),
         "gpt_enabled": GPT_ENABLED,
@@ -887,7 +908,10 @@ def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_ke
 def stream_completion(messages, model=None, api_base=None, api_key=None, max_tokens=4096):
     """通用流式补全：可指定模型/接口/密钥（群聊成员各连各家用）。
     不传就用默认那家。逐段 yield 文本；最后 yield ('__usage__', usage)。"""
-    model = model or MODEL
+    if not model and not api_base and not api_key:
+        model, api_base, api_key = default_gateway()
+    else:
+        model = model or MODEL
     if api_base == claude_exec.GATEWAY_BASE:
         yield from claude_exec.stream_completion(messages, max_tokens=max_tokens)
         return
