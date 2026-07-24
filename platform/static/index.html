@@ -7,7 +7,7 @@
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/static/icon.png" />
 <script src="/static/app-core.js?v=20260722j"></script>
-<script src="/static/ui-redesign.js?v=20260723a" defer></script>
+<script src="/static/ui-redesign.js?v=20260724a" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="AI 助手" />
@@ -468,8 +468,8 @@ function scrollHard(){scroll();requestAnimationFrame(scroll);setTimeout(scroll,1
 let currentSid=(()=>{try{return +localStorage.getItem("sid")||1;}catch(_){return 1;}})();
 var selectedModel=(()=>{try{return localStorage.getItem("chat_model")||"";}catch(_){return "";}})();
 var pendingDiaryRequestId=0;
-function setChatModel(model){selectedModel=model||"";try{localStorage.setItem("chat_model",selectedModel);}catch(_){}}
-function markActiveSession(id=currentSid){api("/api/sessions/active",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id})}).catch(()=>{});}
+function setChatModel(model,{announce=true}={}){selectedModel=model||"";try{localStorage.setItem("chat_model",selectedModel);}catch(_){}if(announce)markActiveSession();}
+function markActiveSession(id=currentSid){api("/api/sessions/active",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,model:selectedModel||undefined})}).catch(()=>{});}
 function setSid(id,announce=true){currentSid=+id||1;try{localStorage.setItem("sid",currentSid);}catch(_){}if(announce)markActiveSession();}
 // 分句显示：助手消息按 ||| 拆成几条泡泡（像微信一句句发）；没分隔符就原样一条
 function splitParts(s){return (s||"").split(/\s*\|\|\|\s*/).map(x=>x.trim()).filter(Boolean);}
@@ -481,7 +481,7 @@ function renderMsg(m){const t=fmtTime(m.created_at);
 let lastMessageId=0;
 async function loadMsgs(){try{const r=await api("/api/messages?session_id="+currentSid);const arr=await r.json();lastMessageId=Math.max(0,...arr.map(m=>Number(m.id)||0));msgs.innerHTML="";if(!arr.length){msgs.innerHTML='<div class="empty">跟它说说话吧~</div>';}arr.forEach(renderMsg);scrollHard();}catch(e){}}
 let jobWatchTimer=0;
-async function watchBackgroundReplies(){clearTimeout(jobWatchTimer);try{const r=await api("/api/chat/jobs?session_id="+currentSid);const jobs=await r.json();await loadMsgs();if(jobs.length)jobWatchTimer=setTimeout(watchBackgroundReplies,1200);}catch(_){jobWatchTimer=setTimeout(watchBackgroundReplies,2500);}}
+async function watchBackgroundReplies(waitForCompletion=false){clearTimeout(jobWatchTimer);try{const r=await api("/api/chat/jobs?session_id="+currentSid);const jobs=await r.json();if(!waitForCompletion||!jobs.length)await loadMsgs();if(jobs.length)jobWatchTimer=setTimeout(()=>watchBackgroundReplies(waitForCompletion),1200);}catch(_){jobWatchTimer=setTimeout(()=>watchBackgroundReplies(waitForCompletion),2500);}}
 function openDrawer(){$("#drawer").style.display="block";loadSessions();}
 function closeDrawer(){$("#drawer").style.display="none";}
 async function loadSessions(){try{const r=await api("/api/sessions");const arr=await r.json();
@@ -509,7 +509,7 @@ let BD=localStorage.getItem("bd")==="1",bdSaving=false;
 function updateBd(){const b=document.getElementById("bdBtn");if(b){b.style.opacity=BD?".9":".42";b.textContent="✦";b.style.color=BD?"var(--rose)":"var(--soft)";}}
 function rememberBd(v){BD=!!v;try{localStorage.setItem("bd",BD?"1":"0");}catch(_){}updateBd();}
 async function syncBedroomState(){try{const r=await api("/api/sessions/state?id="+currentSid);const d=await r.json();rememberBd(d.bedroom);}catch(_){}return BD;}
-async function setBedroom(enabled,{quiet=false}={}){if(bdSaving)return BD;bdSaving=true;try{const r=await api("/api/sessions/bedroom",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:currentSid,enabled:!!enabled})});const d=await r.json();if(!r.ok)throw new Error(d.error||"save failed");rememberBd(d.bedroom);if(!quiet)toast(BD?"门关好了":"回到日常");if(BD&&!String(selectedModel||"").endsWith("claude-opus-4-6"))setTimeout(()=>toast("亲密情境实测推荐 Claude Opus 4.6，可在模型栏切换"),900);}catch(_){toast("暗号没有送到，再试一次");}finally{bdSaving=false;}return BD;}
+async function setBedroom(enabled,{quiet=false}={}){if(bdSaving)return BD;bdSaving=true;try{const r=await api("/api/sessions/bedroom",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:currentSid,enabled:!!enabled})});const d=await r.json();if(!r.ok)throw new Error(d.error||"save failed");rememberBd(d.bedroom);if(!quiet)toast(BD?"门关好了":"回到日常");const intimate=["claude-subscription-opus-4-8","anthropic/claude-opus-4.8","claude-opus-4-6"];if(BD&&!intimate.some(x=>String(selectedModel||"").endsWith(x)))setTimeout(()=>toast("亲密情境推荐 Claude Opus，可在模型栏明确切换"),900);}catch(_){toast("暗号没有送到，再试一次");}finally{bdSaving=false;}return BD;}
 function toggleBd(){return setBedroom(!BD);}
 let bdTapCount=0,bdTapTimer=0;
 function handleBdTap(){clearTimeout(bdTapTimer);bdTapCount++;bdTapTimer=setTimeout(()=>bdTapCount=0,1100);if(bdTapCount<3)return;bdTapCount=0;toggleBd();}
@@ -517,7 +517,7 @@ updateBd();
 async function send(){const t=$("#input").value.trim();const uploading=pendingAttachments.some(x=>x.status==="uploading");if(uploading){toast("附件还在上传，等一下就好");return;}
   const attachments=pendingAttachments.filter(x=>x.status==="ready").map(x=>({url:x.url,name:x.name,kind:x.kind}));if(!t&&!attachments.length)return;
   const first=attachments[0]||{};const img=first.url||"",fileName=first.name||"";$("#input").value="";if(msgs.querySelector(".empty"))msgs.innerHTML="";
-  const userBubble=bubble("user",t,nowHM(),img,undefined,fileName,attachments);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="",streamError="",jobId="";const bubbles=[b];const bd=BD;
+  const userBubble=bubble("user",t,nowHM(),img,undefined,fileName,attachments);clearPending();const b=bubble("assistant","");b.classList.add("typing");let acc="",streamError="",jobId="",streamDone=false;const bubbles=[b];const bd=BD;
   // 流式边收边拆：出现 ||| 就开新泡泡，像真人一条条发；卧室(🔥)一整段沉浸，绝不拆
   function paint(){
     if(bd){b._tx.textContent=acc.replace(/\s*\|\|\|\s*/g,"\n").replace(/\|+\s*$/,"").trim();scroll();return;}
@@ -530,12 +530,20 @@ async function send(){const t=$("#input").value.trim();const uploading=pendingAt
     if(!r.ok)throw new Error("服务器返回 HTTP "+r.status);
     if(!r.body)throw new Error("浏览器没有接到回复流");
     const reader=r.body.getReader();const dec=new TextDecoder();let buf="";
-    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(typeof e.bedroom==="boolean")rememberBd(e.bedroom);if(e.job_id)jobId=e.job_id;if(e.error)streamError=e.error;if(e.user_message_id){lastMessageId=Math.max(lastMessageId,Number(e.user_message_id)||0);bindLongPress(userBubble,e.user_message_id,"user");}if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.assistant_message_id){lastMessageId=Math.max(lastMessageId,Number(e.assistant_message_id)||0);bubbles.forEach(bb=>bindLongPress(bb,e.assistant_message_id,"assistant"));}if(e.moment)window.dispatchEvent(new CustomEvent("goodlove:moment"));if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
+    while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf("\n\n"))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith("data:"))continue;try{const e=JSON.parse(line.slice(5).trim());if(typeof e.bedroom==="boolean")rememberBd(e.bedroom);if(e.job_id)jobId=e.job_id;if(e.done)streamDone=true;if(e.error)streamError=e.error;if(e.user_message_id){lastMessageId=Math.max(lastMessageId,Number(e.user_message_id)||0);bindLongPress(userBubble,e.user_message_id,"user");}if(e.think_summary){attachThinkingSummary(b,e.think_summary);scroll();}if(e.t){acc+=e.t;b.classList.remove("typing");paint();}if(e.assistant_message_id){lastMessageId=Math.max(lastMessageId,Number(e.assistant_message_id)||0);bubbles.forEach(bb=>bindLongPress(bb,e.assistant_message_id,"assistant"));}if(e.moment)window.dispatchEvent(new CustomEvent("goodlove:moment"));if(e.diary_unlocked&&e.diary_unlocked.length)toast("柯把那一页交给你了");}catch(_){}}}
   }catch(e){streamError=(e&&e.message)||"连接中断";}
   if(diaryRequestId)pendingDiaryRequestId=0;
   b.classList.remove("typing");
+  if(jobId&&!streamDone){
+    if(!acc)b.parentElement.remove();else{while(bubbles.length>1&&!bubbles[bubbles.length-1]._tx.textContent){bubbles.pop().parentElement.remove();}bubbles.forEach(bb=>setBubbleTime(bb,nowHM()));}
+    toast("页面这边断了一下，柯仍在服务器继续说");watchBackgroundReplies(true);return;
+  }
+  if(streamError){
+    bubbles.slice(1).forEach(bb=>bb.parentElement.remove());
+    b._tx.textContent="这次没有接上："+streamError;
+    setBubbleTime(b,nowHM());return;
+  }
   if(!acc){
-    if(jobId&&/连接|网络|回复流|fetch/i.test(streamError)){b.parentElement.remove();toast("页面断开了，柯仍在服务器继续说");watchBackgroundReplies();return;}
     b._tx.textContent=streamError?"这次没有接上："+streamError:"这次模型没有返回正文，点一下再试。";setBubbleTime(b,nowHM());return;}
   while(bubbles.length>1&&!bubbles[bubbles.length-1]._tx.textContent){bubbles.pop().parentElement.remove();}
   bubbles.forEach(bb=>setBubbleTime(bb,nowHM()));}  // 每条都挂时间,泡泡才对得齐
@@ -688,7 +696,7 @@ async function boot(){
   const bootParams=new URLSearchParams(location.search);
   const pushedSid=Number(bootParams.get("session_id")||0);
   if(pushedSid>0)setSid(pushedSid);
-  else{try{const d=await(await api("/api/sessions/active")).json();if(d?.id)setSid(d.id,false);}catch(_){}}
+  else{try{const d=await(await api("/api/sessions/active")).json();if(d?.id)setSid(d.id,false);if(!selectedModel&&d?.model)setChatModel(d.model,{announce:false});}catch(_){}}
   if(currentSid!==1){api("/api/sessions").then(r=>r.json()).then(a=>{const s=a.find(x=>x.id===currentSid);if(s)$("#hdrTitle").textContent=s.name;else setSid(1,false);}).catch(()=>{});}
   watchBackgroundReplies();
   const diaryId=Number(bootParams.get("diary_request")||0);

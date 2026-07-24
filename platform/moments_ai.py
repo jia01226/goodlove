@@ -12,7 +12,7 @@ import threading
 
 import chat_ai
 import db
-from constants import ERROR_TAG, MAIN_SESSION, THINK_TAG, USAGE_TAG
+from constants import ERROR_TAG, THINK_TAG, USAGE_TAG
 
 logger = logging.getLogger(__name__)
 _runner_lock = threading.Lock()
@@ -58,15 +58,27 @@ def _clean_visible(text, limit=500):
     return _soft_clip(text, limit)
 
 
-def _collect(history, posts):
+def _collect(history, posts, session_id=None):
     text = ""
     upstream_error = ""
-    for piece in chat_ai.stream_chat(history, posts):
+    sid = int(session_id or db.active_chat_session_id())
+    for piece in chat_ai.stream_chat(history, posts, sid=sid):
         if isinstance(piece, tuple):
             if piece[0] == USAGE_TAG:
                 usage = piece[1] or {}
-                cost, it, ot = chat_ai.estimate_cost(chat_ai.MODEL, usage)
-                db.log_usage(chat_ai.MODEL, it, ot, cost)
+                requested = usage.get("requested_model") or db.active_chat_model(sid) or chat_ai.MODEL
+                cost, it, ot = chat_ai.estimate_cost(requested, usage)
+                db.log_usage(
+                    requested, it, ot, cost,
+                    requested_model=requested,
+                    returned_model=usage.get("returned_model") or "",
+                    finish_reason=usage.get("finish_reason") or "",
+                    cached_tokens=usage.get("cached_tokens") or 0,
+                    first_token_ms=usage.get("first_token_ms") or 0,
+                    total_ms=usage.get("total_ms") or 0,
+                    quality_retry=usage.get("quality_retry") or 0,
+                    http_status=usage.get("http_status") or 0,
+                )
             elif piece[0] == THINK_TAG:
                 pass  # 朋友圈只保存公开回复，raw reasoning 不落库。
             elif piece[0] == ERROR_TAG:
@@ -163,8 +175,9 @@ def _timeline_text(moment, limit=2):
     return "\n".join(lines) or "（没有内容相关的近期动态；不要提旧动态）"
 
 
-def _base_history():
-    history = db.recent_messages(session_id=MAIN_SESSION, limit=12)
+def _base_history(session_id=None):
+    sid = int(session_id or db.active_chat_session_id())
+    history = db.recent_messages(session_id=sid, limit=12)
     # 朋友圈只借近期氛围；每条截断，避免低频回复把上下文撑大。
     return [{"author": item["author"], "content": (item.get("content") or "")[:220]}
             for item in history]
@@ -190,6 +203,7 @@ def _parse_reaction(raw):
 
 
 def _generate_initial(moment):
+    sid = int(moment.get("session_id") or db.active_chat_session_id())
     has_new_image = bool(moment.get("image") and not moment.get("image_description"))
     image_rule = (
         "这条动态带图片。请在 image_description 中用100~200字客观描述可见物体、构图、光线与可读文字，"
@@ -200,6 +214,7 @@ def _generate_initial(moment):
     directive = (
         "<system_trigger>\n"
         "这是朋友圈里的延迟路过，不是佳佳此刻在聊天里追问你。请按柯的人设，自然决定要不要点赞、留一句什么。\n"
+        f"动态编号：#{moment.get('id')}；这条动态属于单聊窗口 #{sid}。\n"
         f"当前动态：{moment.get('content') or '（只有一张图片）'}\n"
         f"与当前内容真正相关的近期动态（后端最多筛两条）：\n{_timeline_text(moment)}\n"
         f"{image_rule}\n"
@@ -211,16 +226,21 @@ def _generate_initial(moment):
         "没有相关动态时绝不翻旧账；即使提供了相关动态，也只在自然需要时轻轻联想一次，不复述旧内容。\n"
         "</system_trigger>"
     )
-    history = _base_history()
+    history = _base_history(sid)
     message = {"author": "user", "content": directive}
     if has_new_image:
         message["image"] = moment.get("image")
     history.append(message)
-    raw = _collect(history, db.retrieve_l2("single"))
+    raw = _collect(history, db.retrieve_l2("single"), session_id=sid)
     return _parse_reaction(raw)
 
 
 def _generate_comment_reply(moment, target_comment):
+    sid = int(
+        target_comment.get("session_id")
+        or moment.get("session_id")
+        or db.active_chat_session_id()
+    )
     chain = []
     for item in (moment.get("comments") or [])[-10:]:
         who = "佳佳" if item.get("author") == "user" else "柯"
@@ -233,6 +253,8 @@ def _generate_comment_reply(moment, target_comment):
     directive = (
         "<system_trigger>\n"
         "这是朋友圈评论链里，佳佳早些时候留给你的一句话。现在轮到你路过并接下去，不是正式聊天回复。\n"
+        f"动态编号：#{moment.get('id')}；评论编号：#{target_comment.get('id')}；"
+        f"这条事件属于单聊窗口 #{sid}。\n"
         f"动态正文：{moment.get('content') or '（图片动态）'}"
         f"{image_context}\n"
         f"发动态时的隐藏背景：{(moment.get('context_note') or '无')[:500]}\n"
@@ -242,8 +264,10 @@ def _generate_comment_reply(moment, target_comment):
         "像同一个熟人在评论区自然接话，不说“谢谢你的评论”“我理解你的感受”“很高兴你分享”。\n"
         "</system_trigger>"
     )
-    history = _base_history() + [{"author": "user", "content": directive}]
-    return _clean_visible(_collect(history, db.retrieve_l2("single")), 500)
+    history = _base_history(sid) + [{"author": "user", "content": directive}]
+    return _clean_visible(
+        _collect(history, db.retrieve_l2("single"), session_id=sid), 500
+    )
 
 
 def process_due(limit=3):

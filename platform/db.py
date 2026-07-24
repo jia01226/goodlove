@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS concerns (
 -- 朋友圈：佳佳和柯（以后可扩展更多成员）你来我往发的动态
 CREATE TABLE IF NOT EXISTS moments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER DEFAULT 1,  -- 事件发生时佳佳正在使用的单聊；供同一个柯接住
     author TEXT NOT NULL,          -- 'user'=佳佳 / 'ke'=柯（以后可扩展更多成员名）
     content TEXT DEFAULT '',
     image TEXT DEFAULT '',         -- 图片URL（复用 /api/upload 返回的 /uploads/xxx），可空
@@ -244,6 +245,7 @@ CREATE TABLE IF NOT EXISTS chat_job_events (
 CREATE TABLE IF NOT EXISTS chat_runtime_state (
     id INTEGER PRIMARY KEY CHECK (id=1),
     active_session_id INTEGER DEFAULT 1,
+    selected_model TEXT DEFAULT '', -- PWA 最近明确选择的引擎；后台生活能力跟随它
     updated_at DATETIME DEFAULT (datetime('now','+8 hours'))
 );
 
@@ -284,6 +286,7 @@ CREATE TABLE IF NOT EXISTS ke_drawer_items (
 CREATE TABLE IF NOT EXISTS moment_comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     moment_id INTEGER NOT NULL,
+    session_id INTEGER DEFAULT 1,  -- 评论发生时所属的单聊
     author TEXT NOT NULL,          -- 'user' / 'ke'
     content TEXT NOT NULL,
     reply_due_at DATETIME,
@@ -408,6 +411,15 @@ def init_db():
         conn.execute("ALTER TABLE chat_sessions ADD COLUMN bedroom_mode INTEGER DEFAULT 0")
     if "scene_started_after" not in scols:
         conn.execute("ALTER TABLE chat_sessions ADD COLUMN scene_started_after INTEGER DEFAULT 0")
+    runtime_cols = [
+        r["name"] for r in conn.execute(
+            "PRAGMA table_info(chat_runtime_state)"
+        ).fetchall()
+    ]
+    if "selected_model" not in runtime_cols:
+        conn.execute(
+            "ALTER TABLE chat_runtime_state ADD COLUMN selected_model TEXT DEFAULT ''"
+        )
     ucols = [r["name"] for r in conn.execute("PRAGMA table_info(gateway_usage)").fetchall()]
     for _name, _decl in {
         "requested_model": "TEXT DEFAULT ''",
@@ -439,6 +451,7 @@ def init_db():
     # 朋友圈从基础留言板升级成双向生活墙：存量内容保持 done，不会部署后突然批量触发 AI 回复。
     moment_cols = [r["name"] for r in conn.execute("PRAGMA table_info(moments)").fetchall()]
     _moment_cols = {
+        "session_id": "INTEGER DEFAULT 1",
         "context_note": "TEXT DEFAULT ''",
         "image_description": "TEXT DEFAULT ''",
         "reply_due_at": "DATETIME",
@@ -454,6 +467,7 @@ def init_db():
     conn.execute("UPDATE moments SET updated_at=created_at WHERE updated_at IS NULL OR updated_at=''")
     comment_cols = [r["name"] for r in conn.execute("PRAGMA table_info(moment_comments)").fetchall()]
     _comment_cols = {
+        "session_id": "INTEGER DEFAULT 1",
         "reply_due_at": "DATETIME",
         "reply_status": "TEXT DEFAULT 'none'",
         "updated_at": "DATETIME DEFAULT ''",
@@ -1130,16 +1144,17 @@ def delete_concern(cid):
 
 # ---- 朋友圈（moments）----
 def add_moment(author, content, image="", visibility="private", context_note="",
-               image_description="", reply_due_at=None, reply_status=None):
+               image_description="", reply_due_at=None, reply_status=None,
+               session_id=1):
     if visibility not in ("private", "public"):
         visibility = "private"
     if reply_status not in ("pending", "processing", "done"):
         reply_status = "pending" if author == "user" else "done"
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO moments (author,content,image,visibility,context_note,image_description,"
-        "reply_due_at,reply_status) VALUES (?,?,?,?,?,?,?,?)",
-        (author, content, image, visibility, context_note, image_description,
+        "INSERT INTO moments (session_id,author,content,image,visibility,context_note,"
+        "image_description,reply_due_at,reply_status) VALUES (?,?,?,?,?,?,?,?,?)",
+        (int(session_id or 1), author, content, image, visibility, context_note, image_description,
          reply_due_at, reply_status))
     conn.commit(); mid = cur.lastrowid; conn.close()
     return mid
@@ -1149,7 +1164,7 @@ def _moment_comments(conn, moment_ids):
         return {}
     slots = ",".join("?" for _ in moment_ids)
     rows = conn.execute(
-        f"SELECT id,moment_id,author,content,reply_status,created_at "
+        f"SELECT id,moment_id,session_id,author,content,reply_status,created_at "
         f"FROM moment_comments WHERE moment_id IN ({slots}) ORDER BY id", tuple(moment_ids)).fetchall()
     grouped = {}
     for row in rows:
@@ -1160,7 +1175,7 @@ def list_moments(limit=50):
     """动态列表（最新在前）；每条附 comments 键=该动态的评论列表（时间正序）。"""
     conn = get_db()
     rows = conn.execute(
-        "SELECT id,author,content,image,visibility,reply_status,"
+        "SELECT id,session_id,author,content,image,visibility,reply_status,"
         "ai_liked,user_liked,created_at FROM moments ORDER BY id DESC LIMIT ?",
         (limit,)).fetchall()
     by_moment = _moment_comments(conn, [r["id"] for r in rows])
@@ -1291,16 +1306,24 @@ def active_chat_jobs(session_id):
     conn.close()
     return [dict(row) for row in rows]
 
-def add_comment(moment_id, author, content, reply_due_at=None, reply_status="none"):
+def add_comment(moment_id, author, content, reply_due_at=None, reply_status="none",
+                session_id=None):
     """给某条动态加评论；动态不存在则不插入、返回 None。"""
     if reply_status not in ("none", "pending", "processing", "done"):
         reply_status = "none"
     conn = get_db()
-    if not conn.execute("SELECT 1 FROM moments WHERE id=?", (moment_id,)).fetchone():
+    moment = conn.execute(
+        "SELECT session_id FROM moments WHERE id=?", (moment_id,)
+    ).fetchone()
+    if not moment:
         conn.close(); return None
+    if session_id is None:
+        session_id = moment["session_id"] or 1
     cur = conn.execute(
-        "INSERT INTO moment_comments (moment_id,author,content,reply_due_at,reply_status) "
-        "VALUES (?,?,?,?,?)", (moment_id, author, content, reply_due_at, reply_status))
+        "INSERT INTO moment_comments "
+        "(moment_id,session_id,author,content,reply_due_at,reply_status) "
+        "VALUES (?,?,?,?,?,?)",
+        (moment_id, int(session_id or 1), author, content, reply_due_at, reply_status))
     conn.commit(); cid = cur.lastrowid; conn.close()
     return cid
 
@@ -1357,17 +1380,24 @@ def finish_moment_reply(mid, liked=False, comment="", image_description=""):
         (1 if liked else 0, image_description, image_description, mid))
     if comment:
         conn.execute(
-            "INSERT INTO moment_comments (moment_id,author,content,reply_status) VALUES (?,'ke',?,'none')",
-            (mid, comment))
+            "INSERT INTO moment_comments "
+            "(moment_id,session_id,author,content,reply_status) "
+            "SELECT id,COALESCE(session_id,1),'ke',?,'none' FROM moments WHERE id=?",
+            (comment, mid))
     conn.commit(); conn.close()
 
 def finish_comment_reply(comment_id, content):
     conn = get_db(); conn.execute("BEGIN IMMEDIATE")
-    row = conn.execute("SELECT moment_id FROM moment_comments WHERE id=?", (comment_id,)).fetchone()
+    row = conn.execute(
+        "SELECT moment_id,session_id FROM moment_comments WHERE id=?",
+        (comment_id,)
+    ).fetchone()
     if row and content:
         conn.execute(
-            "INSERT INTO moment_comments (moment_id,author,content,reply_status) VALUES (?,'ke',?,'none')",
-            (row["moment_id"], content))
+            "INSERT INTO moment_comments "
+            "(moment_id,session_id,author,content,reply_status) "
+            "VALUES (?,?,'ke',?,'none')",
+            (row["moment_id"], row["session_id"] or 1, content))
     conn.execute(
         "UPDATE moment_comments SET reply_status='done',updated_at=datetime('now','+8 hours') WHERE id=?",
         (comment_id,))
@@ -1694,12 +1724,21 @@ def drawer_catalog_status():
         conn.close()
 
 
-def messages_on_date(date, session_id=1):
-    """某天(中国时间 YYYY-MM-DD)的全部消息，给写日记回顾用。"""
+def messages_on_date(date, session_id=None):
+    """某天的消息；夜间默认汇总全部 1 对 1 窗口，换窗不会漏掉当天生活。"""
     conn = get_db()
-    rows = conn.execute(
-        "SELECT author,content,created_at FROM chat_messages "
-        "WHERE session_id=? AND date(created_at)=? ORDER BY id", (session_id, date)).fetchall()
+    if session_id is None:
+        rows = conn.execute(
+            "SELECT author,content,created_at FROM chat_messages "
+            "WHERE session_id!=? AND date(created_at)=? ORDER BY id",
+            (GROUP_SID, date),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT author,content,created_at FROM chat_messages "
+            "WHERE session_id=? AND date(created_at)=? ORDER BY id",
+            (session_id, date),
+        ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -1730,8 +1769,8 @@ def create_chat_session(name="新对话"):
     return sid
 
 
-def set_active_chat_session(sid):
-    """记录佳佳此刻真正打开的单聊；非法、群聊或已删除会话不接受。"""
+def set_active_chat_session(sid, selected_model=None):
+    """记录佳佳此刻真正打开的单聊与明确选择的引擎。"""
     try:
         sid = int(sid)
     except (TypeError, ValueError):
@@ -1743,10 +1782,23 @@ def set_active_chat_session(sid):
     if not valid:
         conn.close()
         return False
-    conn.execute(
-        "INSERT INTO chat_runtime_state (id,active_session_id) VALUES (1,?) "
-        "ON CONFLICT(id) DO UPDATE SET active_session_id=excluded.active_session_id,"
-        "updated_at=datetime('now','+8 hours')", (sid,))
+    selected_model = (
+        str(selected_model or "").strip()[:160]
+        if selected_model is not None else None
+    )
+    if selected_model is None:
+        conn.execute(
+            "INSERT INTO chat_runtime_state (id,active_session_id) VALUES (1,?) "
+            "ON CONFLICT(id) DO UPDATE SET active_session_id=excluded.active_session_id,"
+            "updated_at=datetime('now','+8 hours')", (sid,))
+    else:
+        conn.execute(
+            "INSERT INTO chat_runtime_state (id,active_session_id,selected_model) "
+            "VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET "
+            "active_session_id=excluded.active_session_id,"
+            "selected_model=excluded.selected_model,"
+            "updated_at=datetime('now','+8 hours')",
+            (sid, selected_model))
     conn.commit(); conn.close()
     return True
 
@@ -1769,6 +1821,30 @@ def active_chat_session_id():
         sid = int(fallback["id"]) if fallback else 1
     conn.close()
     return sid
+
+
+def active_chat_model(session_id=None):
+    """后台生活能力使用的模型：当前窗口优先，否则取该窗口最后一次明确用过的模型。"""
+    conn = get_db()
+    runtime = conn.execute(
+        "SELECT active_session_id,selected_model FROM chat_runtime_state WHERE id=1"
+    ).fetchone()
+    target_sid = int(session_id or (runtime["active_session_id"] if runtime else 1) or 1)
+    if (
+        runtime
+        and int(runtime["active_session_id"] or 1) == target_sid
+        and str(runtime["selected_model"] or "").strip()
+    ):
+        model = str(runtime["selected_model"]).strip()
+    else:
+        row = conn.execute(
+            "SELECT model FROM chat_messages WHERE session_id=? "
+            "AND TRIM(COALESCE(model,''))<>'' ORDER BY id DESC LIMIT 1",
+            (target_sid,),
+        ).fetchone()
+        model = str(row["model"] or "").strip() if row else ""
+    conn.close()
+    return model
 
 def rename_chat_session(sid, name):
     conn = get_db()

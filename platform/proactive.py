@@ -256,8 +256,23 @@ def generate_message(concern=None, night_watch=False, room_signal=None, session_
         if isinstance(piece, tuple):
             if piece[0] == "__usage__":
                 usage = piece[1] or {}
-                cost, it, ot = chat_ai.estimate_cost(chat_ai.MODEL, usage)
-                db.log_usage(chat_ai.MODEL, it, ot, cost)
+                requested = (
+                    usage.get("requested_model")
+                    or db.active_chat_model(session_id)
+                    or chat_ai.MODEL
+                )
+                cost, it, ot = chat_ai.estimate_cost(requested, usage)
+                db.log_usage(
+                    requested, it, ot, cost,
+                    requested_model=requested,
+                    returned_model=usage.get("returned_model") or "",
+                    finish_reason=usage.get("finish_reason") or "",
+                    cached_tokens=usage.get("cached_tokens") or 0,
+                    first_token_ms=usage.get("first_token_ms") or 0,
+                    total_ms=usage.get("total_ms") or 0,
+                    quality_retry=usage.get("quality_retry") or 0,
+                    http_status=usage.get("http_status") or 0,
+                )
             elif piece[0] == ERROR_TAG:
                 upstream_error = True
             continue

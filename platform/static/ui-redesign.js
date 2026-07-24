@@ -210,7 +210,7 @@
     const fillModels = (models, defaultModel = "", options = []) => {
       const allowed = Array.from(new Set([defaultModel, ...models].filter(Boolean)));
       const providers = new Map(options.map((option) => [option.id, option.provider]));
-      const groups = { claude: [], gpt: [], deepseek: [], other: [] };
+      const groups = { claude_subscription: [], claude: [], gpt: [], deepseek: [], other: [] };
       allowed.forEach((model) => {
         const lower = String(model).toLowerCase();
         const provider = providers.get(model) || (lower.includes("deepseek") ? "deepseek" : (lower.includes("gpt") ? "gpt" : "claude"));
@@ -218,6 +218,7 @@
       });
       const optionHtml = (model) => `<option value="${escapeHtml(model)}" title="${escapeHtml(model)}">${escapeHtml(modelLabel(model, model === defaultModel))}</option>`;
       picker.innerHTML = [
+        groups.claude_subscription.length ? `<optgroup label="Claude 订阅 · 柯">${groups.claude_subscription.map(optionHtml).join("")}</optgroup>` : "",
         groups.claude.length ? `<optgroup label="Claude · 柯">${groups.claude.map(optionHtml).join("")}</optgroup>` : "",
         groups.gpt.length ? `<optgroup label="GPT · 柯">${groups.gpt.map(optionHtml).join("")}</optgroup>` : "",
         groups.deepseek.length ? `<optgroup label="DeepSeek · 柯">${groups.deepseek.map(optionHtml).join("")}</optgroup>` : "",
@@ -249,7 +250,9 @@
     const id = slug.toLowerCase();
     let short = slug.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
     const claude = id.match(/^claude[-_](opus|sonnet|haiku|fable)[-_](\d+(?:[._-]\d+)?)(.*)$/);
-    if (claude) {
+    if (id === "claude-subscription-opus-4-8") {
+      short = "Claude Opus 4.8 · 订阅";
+    } else if (claude) {
       const family = claude[1][0].toUpperCase() + claude[1].slice(1);
       const version = claude[2].replace(/[_-]/g, ".");
       const suffix = claude[3].replace(/^[-_]+/, "").replace(/[-_]/g, " ");
@@ -261,7 +264,7 @@
       const deepseek = id.replace(/^deepseek[-_]?/, "").replace(/[-_]/g, " ").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
       short = `DeepSeek ${deepseek}`.trim();
     }
-    const intimateRecommended = id === "claude-opus-4-6" ? " · 亲密推荐" : "";
+    const intimateRecommended = ["claude-subscription-opus-4-8", "claude-opus-4-8", "claude-opus-4-6"].includes(id) ? " · 亲密推荐" : "";
     return `${short || "默认模型"}${intimateRecommended}${isDefault ? " · 默认" : ""}`;
   }
 

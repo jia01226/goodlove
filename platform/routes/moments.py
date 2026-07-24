@@ -46,10 +46,11 @@ def api_add_moment():
         visibility = "private"
     # author 固定为 user：佳佳从界面只能以自己身份发（柯的动态走聊天暗号）
     due = moments_ai.next_due("moment")
+    sid = db.active_chat_session_id()
     mid = db.add_moment(author="user", content=content, image=image, visibility=visibility,
                         context_note="佳佳从朋友圈发出的动态。",
-                        reply_due_at=due, reply_status="pending")
-    return jsonify({"id": mid, "reply_due_at": due})
+                        reply_due_at=due, reply_status="pending", session_id=sid)
+    return jsonify({"id": mid, "session_id": sid, "reply_due_at": due})
 
 
 @bp.post("/api/moments/edit")
@@ -97,11 +98,13 @@ def api_add_comment():
     if not content:
         return jsonify({"error": "need content"}), 400
     due = moments_ai.next_due("comment")
+    sid = db.active_chat_session_id()
     cid = db.add_comment(d.get("moment_id"), "user", content,
-                         reply_due_at=due, reply_status="pending")
+                         reply_due_at=due, reply_status="pending",
+                         session_id=sid)
     if cid is None:
         return jsonify({"error": "moment not found"}), 404
-    return jsonify({"id": cid, "reply_due_at": due})
+    return jsonify({"id": cid, "session_id": sid, "reply_due_at": due})
 
 
 @bp.post("/api/moments/comment/delete")

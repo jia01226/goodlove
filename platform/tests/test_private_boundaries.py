@@ -238,6 +238,29 @@ class PrivateBoundaryTests(unittest.TestCase):
         self.assertEqual(self.db.active_chat_session_id(), new_sid)
         self.assertTrue(self.db.set_active_chat_session(1))
         self.assertEqual(self.db.active_chat_session_id(), 1)
+
+    def test_active_model_and_moment_events_follow_current_window(self):
+        new_sid = self.db.create_chat_session("临时生活窗口")
+        self.assertTrue(
+            self.db.set_active_chat_session(
+                new_sid, "claude-subscription-opus-4-8"
+            )
+        )
+        self.assertEqual(
+            self.db.active_chat_model(new_sid),
+            "claude-subscription-opus-4-8",
+        )
+        moment_id = self.db.add_moment(
+            "user", "只在临时库里的动态", reply_status="done",
+            session_id=new_sid,
+        )
+        comment_id = self.db.add_comment(
+            moment_id, "user", "只在临时库里的评论"
+        )
+        moment = self.db.get_moment(moment_id)
+        self.assertEqual(moment["session_id"], new_sid)
+        comment = next(item for item in moment["comments"] if item["id"] == comment_id)
+        self.assertEqual(comment["session_id"], new_sid)
         self.assertTrue(self.db.set_active_chat_session(new_sid))
         self.assertTrue(self.db.delete_chat_session(new_sid))
         self.assertEqual(self.db.active_chat_session_id(), 1)
@@ -1067,6 +1090,104 @@ class ModelGatewayRoutingTests(unittest.TestCase):
                 sys.modules["requests"] = previous_requests
         self.assertEqual(pro, 1.305)
         self.assertEqual(flash, 0.42)
+
+    def test_claude_subscription_is_a_distinct_explicit_route(self):
+        import chat_ai
+
+        original = chat_ai.claude_exec.is_available
+        chat_ai.claude_exec.is_available = lambda: True
+        try:
+            route = chat_ai.resolve_gateway(chat_ai.claude_exec.MODEL_ID)
+            payload = chat_ai.available_models()
+        finally:
+            chat_ai.claude_exec.is_available = original
+
+        self.assertEqual(
+            route,
+            (
+                chat_ai.claude_exec.MODEL_ID,
+                chat_ai.claude_exec.GATEWAY_BASE,
+                "",
+            ),
+        )
+        self.assertIn(
+            {
+                "id": chat_ai.claude_exec.MODEL_ID,
+                "provider": "claude_subscription",
+            },
+            payload["options"],
+        )
+
+
+class ClaudeExecAdapterTests(unittest.TestCase):
+    """用本地假 CLI 验证协议、缓存用量和密钥隔离，不调用 Claude。"""
+
+    def test_fake_cli_streams_text_and_reports_cache_usage(self):
+        import claude_exec
+
+        with tempfile.TemporaryDirectory(prefix="goodlove-fake-claude-") as td:
+            fake = Path(td) / "fake_claude.py"
+            fake.write_text(
+                "import json, os, sys\n"
+                "prompt = sys.stdin.read()\n"
+                "ok = ('system_instructions' in prompt and "
+                "not os.environ.get('DEEPSEEK_API_KEY'))\n"
+                "print(json.dumps({'type':'system','subtype':'init',"
+                "'model':'claude-opus-4-8'}), flush=True)\n"
+                "print(json.dumps({'type':'stream_event','event':{'delta':"
+                "{'type':'text_delta','text':'假 CLI '}}}), flush=True)\n"
+                "print(json.dumps({'type':'stream_event','event':{'delta':"
+                "{'type':'text_delta','text':'通过' if ok else '泄漏'}}}), flush=True)\n"
+                "print(json.dumps({'type':'result','subtype':'success',"
+                "'total_cost_usd':0.0123,'modelUsage':{'claude-opus-4-8':"
+                "{'inputTokens':3,'cacheReadInputTokens':17,"
+                "'cacheCreationInputTokens':5,'outputTokens':4}}}), flush=True)\n",
+                encoding="utf-8",
+            )
+            original = (
+                claude_exec.ENABLED,
+                claude_exec.CLI_BIN,
+                claude_exec._command,
+            )
+            previous_secret = os.environ.get("DEEPSEEK_API_KEY")
+            claude_exec.ENABLED = True
+            claude_exec.CLI_BIN = sys.executable
+            claude_exec._command = (
+                lambda _temp, _images, _max_tokens: [sys.executable, str(fake)]
+            )
+            os.environ["DEEPSEEK_API_KEY"] = "temporary-secret-must-not-leak"
+            try:
+                pieces = list(claude_exec.stream_completion([
+                    {"role": "system", "content": "临时系统提示"},
+                    {"role": "user", "content": "临时用户消息"},
+                ]))
+            finally:
+                (
+                    claude_exec.ENABLED,
+                    claude_exec.CLI_BIN,
+                    claude_exec._command,
+                ) = original
+                if previous_secret is None:
+                    os.environ.pop("DEEPSEEK_API_KEY", None)
+                else:
+                    os.environ["DEEPSEEK_API_KEY"] = previous_secret
+
+        visible = "".join(piece for piece in pieces if isinstance(piece, str))
+        usage = next(piece[1] for piece in pieces if (
+            isinstance(piece, tuple) and piece[0] == "__usage__"
+        ))
+        self.assertEqual(visible, "假 CLI 通过")
+        self.assertEqual(usage["returned_model"], "claude-opus-4-8")
+        self.assertEqual(usage["prompt_tokens"], 25)
+        self.assertEqual(usage["cached_tokens"], 17)
+        self.assertEqual(usage["completion_tokens"], 4)
+        self.assertEqual(usage["cost_usd"], 0.0123)
+
+    def test_frontend_recovers_a_partially_received_background_reply(self):
+        source = (PLATFORM_DIR / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('streamDone=false', source)
+        self.assertIn('if(e.done)streamDone=true', source)
+        self.assertIn('watchBackgroundReplies(true)', source)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 """
 import os, json, codecs, base64, mimetypes, requests, hashlib, time
 import attachment_reader
+import claude_exec
 from constants import ERROR_TAG
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
@@ -252,6 +253,8 @@ def resolve_model(req):
 def resolve_gateway(req):
     """返回本轮模型和对应通道；未启用或名单外的第三方请求安全回落默认通道。"""
     req = (req or "").strip()
+    if req == claude_exec.MODEL_ID and claude_exec.is_available():
+        return req, claude_exec.GATEWAY_BASE, ""
     if DEEPSEEK_ENABLED and req in DEEPSEEK_MODEL_WHITELIST:
         return req, DEEPSEEK_API_BASE, DEEPSEEK_API_KEY
     if GPT_ENABLED and req in GPT_MODEL_WHITELIST:
@@ -266,6 +269,12 @@ def available_models():
         if model and model not in models:
             models.append(model)
             options.append({"id": model, "provider": "claude"})
+    if claude_exec.is_available() and claude_exec.MODEL_ID not in models:
+        models.append(claude_exec.MODEL_ID)
+        options.append({
+            "id": claude_exec.MODEL_ID,
+            "provider": "claude_subscription",
+        })
     if GPT_ENABLED:
         for model in [GPT_MODEL, *GPT_MODEL_WHITELIST]:
             if model and model not in models:
@@ -276,8 +285,25 @@ def available_models():
             if model and model not in models:
                 models.append(model)
                 options.append({"id": model, "provider": "deepseek"})
-    return {"models": models, "default": MODEL, "options": options,
-            "gpt_enabled": GPT_ENABLED, "deepseek_enabled": DEEPSEEK_ENABLED}
+    return {
+        "models": models,
+        "default": MODEL,
+        "options": options,
+        "claude_subscription_enabled": claude_exec.is_available(),
+        "gpt_enabled": GPT_ENABLED,
+        "deepseek_enabled": DEEPSEEK_ENABLED,
+    }
+
+
+def background_gateway(session_id=None):
+    """日记、朋友圈、主动消息等后台活跟随 PWA 最近明确选择的线路。"""
+    requested = ""
+    try:
+        import db
+        requested = db.active_chat_model(session_id=session_id)
+    except Exception:
+        requested = ""
+    return resolve_gateway(requested)
 
 def _load_soul():
     """从私有 kongkong 仓库读角色的魂（柯.md/profile/语气样本/memory），按序拼接。
@@ -705,6 +731,10 @@ def stream_chat(history, posts, model=None, bedroom=False, api_base=None, api_ke
     model: 本轮用哪个模型（已过白名单校验），不传用默认。
     api_base/api_key: GPT 通道使用它自己的接口与密钥；不传走默认通道。
     bedroom: 亲密情境默认尊重本轮选择的模型；只有显式设置 BEDROOM_PIN_MODEL=1 才固定私有模型。"""
+    # 主动消息、朋友圈、日记等后台入口不再固定走旧中转；跟随服务器记住的当前模型。
+    # 正式聊天路由会显式传 model/base/key，不会走到这一分支。
+    if not model and not api_base and not api_key:
+        model, api_base, api_key = background_gateway(session_id=sid)
     # 卧室开关先落地成"真生效"：bedroom.py 读不到就整体降级，别一半卧室一半日常
     if bedroom:
         try:
@@ -858,6 +888,9 @@ def stream_completion(messages, model=None, api_base=None, api_key=None, max_tok
     """通用流式补全：可指定模型/接口/密钥（群聊成员各连各家用）。
     不传就用默认那家。逐段 yield 文本；最后 yield ('__usage__', usage)。"""
     model = model or MODEL
+    if api_base == claude_exec.GATEWAY_BASE:
+        yield from claude_exec.stream_completion(messages, max_tokens=max_tokens)
+        return
     api_base = (api_base or API_BASE).rstrip("/")
     api_key = api_key or API_KEY
     payload = {
@@ -1021,6 +1054,11 @@ def estimate_cost(model, usage):
     ot = usage.get("completion_tokens", 0) or 0
     cached = min(it, usage.get("cached_tokens", 0) or 0)
     uncached = max(0, it - cached)
+    if usage.get("cost_usd") is not None:
+        try:
+            return round(float(usage.get("cost_usd") or 0), 6), it, ot
+        except (TypeError, ValueError):
+            pass
     if model == "deepseek-v4-pro":
         # 官方 2026-04 V4 美元价：缓存命中/未命中输入 $0.003625/$0.435，输出 $0.87 / 1M。
         cost = cached / 1e6 * 0.003625 + uncached / 1e6 * 0.435 + ot / 1e6 * 0.87
@@ -1032,18 +1070,26 @@ def estimate_cost(model, usage):
     # 默认按 Sonnet 量级估：$3/M 入、$15/M 出
     return round(it/1e6*3 + ot/1e6*15, 6), it, ot
 
-def _complete(messages, max_tokens=700):
+def _complete(messages, max_tokens=700, model=None, api_base=None, api_key=None,
+              session_id=None):
     """一次性（非流式）补全，返回文本。给"会话总结"等后台活用。失败返回空串。"""
-    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-    payload = {"model": MODEL, "max_tokens": max_tokens, "stream": False, "messages": messages}
+    if not model and not api_base and not api_key:
+        model, api_base, api_key = background_gateway(session_id=session_id)
+    text = []
+    failed = False
     try:
-        r = requests.post(API_BASE + "/chat/completions", headers=headers, json=payload, timeout=120)
-        if r.status_code != 200:
-            print("[summary] 接口非200：", r.status_code, r.text[:160]); return ""
-        data = r.json()
-        return (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+        for piece in stream_completion(
+                messages, model=model, api_base=api_base, api_key=api_key,
+                max_tokens=max_tokens):
+            if isinstance(piece, tuple):
+                if piece[0] == ERROR_TAG:
+                    failed = True
+                continue
+            text.append(piece)
     except Exception as e:
-        print("[summary] 请求失败：", e); return ""
+        print("[summary] 请求失败：", type(e).__name__)
+        return ""
+    return "" if failed else "".join(text).strip()
 
 def write_diary(date=None):
     """睡前替角色写一篇"枕边日记"：回顾当天对话，第一人称写给自己的碎碎念。
@@ -1246,7 +1292,11 @@ def maybe_summarize(sid=1):
             + (f"\n【已有的同版本摘要（在它基础上更新）】\n{old}\n" if old else "")
             + f"\n【只来自佳佳的原话】\n{convo}\n\n直接输出更新后的完整摘要本身，别加说明。"
         )
-        summary = _complete([{"role": "user", "content": prompt}], max_tokens=700)
+        summary = _complete(
+            [{"role": "user", "content": prompt}],
+            max_tokens=700,
+            session_id=sid,
+        )
         if summary:
             db.set_session_summary(sid, summary, new_until, identity_version)
             print(f"[summary] 已折叠 {len(msgs)} 条旧消息进摘要（until={new_until}）")

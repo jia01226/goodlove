@@ -198,7 +198,8 @@ def api_chat():
     if not text and not attachments:
         return jsonify({"error": "empty"}), 400
     sid = _chat_sid(data.get("session_id"))
-    db.set_active_chat_session(sid)
+    model, gateway_base, gateway_key = chat_ai.resolve_gateway(data.get("model"))
+    db.set_active_chat_session(sid, model)
     # 场景状态属于会话而不是某一台手机的 localStorage。旧前端仍传 bedroom=true 时兼容开启；
     # false 不会偷偷关掉，退出必须走显式的 /api/sessions/bedroom。
     if bool(data.get("bedroom")):
@@ -206,7 +207,6 @@ def api_chat():
     bedroom = db.session_bedroom_state(sid)["bedroom"]
     if bedroom:
         logger.info("[bedroom] 前端的卧室开关已送达后端")
-    model, gateway_base, gateway_key = chat_ai.resolve_gateway(data.get("model"))
     attachment_ext = os.path.splitext(attachment_name or image.split("?")[0])[1].lower()
     message_type = "image" if image and attachment_ext in IMG_EXT else ("file" if image else "text")
     user_message_id = db.add_message(
@@ -241,7 +241,7 @@ def api_chat():
     posts = db.retrieve_l2("single")   # 单聊记忆：active 的 L2 卡，已排除 no_model/已忘/已归档/repo-only
     mctx = ""
     # 让柯"看见"朋友圈：把近况拼到最后一条用户消息末尾（只发给模型、不入库、前端不显示）
-    if history and sid == MAIN_SESSION:
+    if history:
         mctx = _moments_context(text)
         if mctx:
             for m in reversed(history):
@@ -257,6 +257,7 @@ def api_chat():
         note_waiting = True
         public_note = ""
         unlocked_diary = []
+        generation_failed = False
         def _hide_unlock(match):
             did = int(match.group(1))
             if diary_request and did == int(diary_request["id"]):
@@ -296,11 +297,14 @@ def api_chat():
                 elif piece[0] == THINK_TAG:
                     pass  # 原始隐藏推理仅由模型内部使用，不传给普通用户界面。
                 elif piece[0] == ERROR_TAG:
+                    generation_failed = True
                     note_waiting = False
                     note_hold = ""
                     yield ("data: " + json.dumps(
                         {"error": str(piece[1] or "这次上游没有给出正文，点一下再试。")},
                         ensure_ascii=False) + "\n\n").encode("utf-8")
+                continue
+            if generation_failed:
                 continue
             if note_waiting:
                 note_hold += piece
@@ -337,7 +341,7 @@ def api_chat():
                 visible, marker_hold = marker_hold[:-48], marker_hold[-48:]
                 acc += visible
                 yield ("data: " + json.dumps({"t": visible}, ensure_ascii=False) + "\n\n").encode("utf-8")
-        if note_waiting:
+        if note_waiting and not generation_failed:
             # 极短回复或模型只吐了半个标签时的安全收尾。
             candidate = note_hold.lstrip()
             if candidate.startswith(_KE_NOTE_OPEN):
@@ -350,24 +354,25 @@ def api_chat():
                 public_note = fallback_note
             yield ("data: " + json.dumps({"think_summary": public_note}, ensure_ascii=False) + "\n\n").encode("utf-8")
         marker_hold = _DIARY_UNLOCK_RE.sub(_hide_unlock, marker_hold)
-        if marker_hold:
+        if marker_hold and not generation_failed:
             acc += marker_hold
             yield ("data: " + json.dumps({"t": marker_hold}, ensure_ascii=False) + "\n\n").encode("utf-8")
         posted_moment = False
-        if acc:
+        if acc and not generation_failed:
             # 柯代发朋友圈 + 评论：抽出暗号落库，聊天记录只存去掉暗号的干净版
             moments_out, comments_out, clean_acc = _extract_moments(acc)
             for body in moments_out:
                 try:
                     db.add_moment(
                         author="ke", content=body, reply_status="done",
-                        context_note=("聊天中有感而发。佳佳刚才说：" + text[:300]))
+                        context_note=("聊天中有感而发。佳佳刚才说：" + text[:300]),
+                        session_id=sid)
                     posted_moment = True
                 except Exception as e:
                     logger.warning("柯代发朋友圈失败：%s", e)
             for mid, body in comments_out:
                 try:
-                    if db.add_comment(mid, "ke", body) is not None:
+                    if db.add_comment(mid, "ke", body, session_id=sid) is not None:
                         posted_moment = True
                 except Exception as e:
                     logger.warning("柯评论朋友圈失败：%s", e)
@@ -512,15 +517,20 @@ def api_session_new():
 def api_session_active():
     """让服务器知道佳佳当前在哪条单聊，主动消息才能准确跟过去。"""
     sid = _chat_sid(jget("id"))
-    ok = db.set_active_chat_session(sid)
-    return jsonify({"ok": ok, "id": sid})
+    requested = jget("model")
+    model = None
+    if requested is not None:
+        model = chat_ai.resolve_gateway(requested)[0]
+    ok = db.set_active_chat_session(sid, model)
+    return jsonify({"ok": ok, "id": sid, "model": db.active_chat_model(sid)})
 
 
 @bp.get("/api/sessions/active")
 @guard
 def api_session_active_get():
     """新设备/新标签先向服务器询问真正的当前窗口，避免本地旧 sid 把主动消息带回旧对话。"""
-    return jsonify({"id": db.active_chat_session_id()})
+    sid = db.active_chat_session_id()
+    return jsonify({"id": sid, "model": db.active_chat_model(sid)})
 
 
 @bp.get("/api/sessions/state")
@@ -528,7 +538,7 @@ def api_session_active_get():
 def api_session_state():
     sid = _chat_sid(request.args.get("id"))
     state = db.session_bedroom_state(sid)
-    return jsonify({"id": sid, **state})
+    return jsonify({"id": sid, "model": db.active_chat_model(sid), **state})
 
 
 @bp.post("/api/sessions/bedroom")
